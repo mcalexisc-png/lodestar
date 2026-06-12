@@ -1,11 +1,24 @@
 # Acknowledgments
 
-Odysseus stands on the shoulders of a lot of open-source work. This file
+Lodestar stands on the shoulders of a lot of open-source work. This file
 credits the projects whose code, assets, or designs are included in or
 adapted by this repository, and notes their licenses.
 
 If you believe something here is mis-attributed or missing, please open an
 issue — it will be corrected promptly.
+
+---
+
+## Lodestar is a fork of Odysseus
+
+Lodestar started as a fork of **[Odysseus](https://github.com/pewdiepie-archdaemon/odysseus)**,
+created by **PewDiePie (Felix Kjellberg)**. The vast majority of the code,
+architecture, and design in this project originates from that work — full
+credit to Felix and the Odysseus contributors. See [NOTICE](NOTICE) and
+[LICENSE](LICENSE) for copyright and licensing details.
+
+All of the acknowledgments below were inherited from Odysseus and remain
+accurate for Lodestar.
 
 ---
 
