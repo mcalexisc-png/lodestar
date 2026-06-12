@@ -64,6 +64,65 @@ jobs:
       - run: ruff check .
       - run: mypy app.py core routes src services scripts
 
+  cold-start-smoke:
+    name: Cold-start & idle-RSS smoke test (lite)
+    runs-on: ubuntu-latest
+    # Informational for now: thresholds are generous headroom over the local
+    # baseline in docs/benchmarks/phase2-baseline.md; tighten once this has
+    # run on CI hardware long enough to set a real ceiling.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: mkdir -p data  # sqlite DB lives at ./data/app.db
+
+      - name: Boot in LODESTAR_LITE mode and measure cold-start + idle RSS
+        env:
+          LODESTAR_LITE: "true"
+        run: |
+          python -m uvicorn app:app --host 127.0.0.1 --port 7000 --workers 1 &
+          PID=$!
+
+          # Poll /api/health until it returns 200, or time out.
+          ready=0
+          for i in $(seq 1 120); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:7000/api/health || true)
+            if [ "$code" = "200" ]; then
+              ready=1
+              echo "Ready after $((i / 2))s ($i polls @ 0.5s)"
+              break
+            fi
+            sleep 0.5
+          done
+          if [ "$ready" != "1" ]; then
+            echo "App did not become healthy within 60s"
+            kill "$PID" 2>/dev/null || true
+            exit 1
+          fi
+
+          # Let background startup tasks settle, then sample idle RSS.
+          sleep 5
+          rss_kb=$(grep VmRSS /proc/$PID/status | awk '{print $2}')
+          echo "Idle RSS: ${rss_kb} KB"
+
+          kill "$PID" 2>/dev/null || true
+          wait "$PID" 2>/dev/null || true
+
+          # Generous ceiling — local full-mode baseline is ~210 MB; CI
+          # installs the same deps regardless of LODESTAR_LITE, so allow
+          # headroom for runner variance.
+          max_rss_kb=600000
+          if [ "$rss_kb" -gt "$max_rss_kb" ]; then
+            echo "Idle RSS ${rss_kb} KB exceeds ${max_rss_kb} KB threshold"
+            exit 1
+          fi
+
   python-tests:
     name: Python tests (pytest)
     runs-on: ubuntu-latest
