@@ -39,20 +39,43 @@ from src.agent_tools import (
 logger = logging.getLogger(__name__)
 
 
-def _load_mcp_disabled_map() -> Dict[str, set]:
-    """Load per-server disabled tool sets from the database."""
+def _load_mcp_disabled_map(mcp_mgr=None) -> Dict[str, set]:
+    """Load the effective per-server hidden-tool sets from the database.
+
+    Combines two admin controls so both hide tools from the LLM prompt/schemas:
+      - ``disabled_tools`` (denylist): always hidden.
+      - ``allowed_tools`` (allowlist): when set, every *other* discovered tool
+        on that server is hidden. Needs ``mcp_mgr`` to know the full tool list;
+        without it, the allowlist is still enforced at runtime by McpManager.
+    """
     from core.database import McpServer, SessionLocal
     disabled_map: Dict[str, set] = {}
+
+    tools_by_server: Dict[str, set] = {}
+    if mcp_mgr is not None:
+        try:
+            for tool in mcp_mgr.get_all_tools():
+                tools_by_server.setdefault(tool["server_id"], set()).add(tool["name"])
+        except Exception:
+            tools_by_server = {}
+
     db = SessionLocal()
     try:
         for srv in db.query(McpServer).all():
+            hidden: set = set()
             if srv.disabled_tools:
                 try:
-                    names = json.loads(srv.disabled_tools)
-                    if names:
-                        disabled_map[srv.id] = set(names)
+                    hidden |= set(json.loads(srv.disabled_tools) or [])
                 except (json.JSONDecodeError, TypeError):
                     pass
+            if srv.allowed_tools is not None and srv.id in tools_by_server:
+                try:
+                    allowed = set(json.loads(srv.allowed_tools) or [])
+                except (json.JSONDecodeError, TypeError):
+                    allowed = set()
+                hidden |= (tools_by_server[srv.id] - allowed)
+            if hidden:
+                disabled_map[srv.id] = hidden
     finally:
         db.close()
     return disabled_map
@@ -1776,7 +1799,7 @@ async def stream_agent_loop(
         sorted(_intent.get("domains") or []),
         _retrieval_query[:200],
     )
-    _mcp_disabled_map = _load_mcp_disabled_map() if mcp_mgr else {}
+    _mcp_disabled_map = _load_mcp_disabled_map(mcp_mgr) if mcp_mgr else {}
     if plan_mode and mcp_mgr:
         # Allow read-only MCP tools to investigate, block write/unknown ones:
         # hide them from the schemas AND reject them at runtime by qualified name.

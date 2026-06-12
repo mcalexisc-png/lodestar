@@ -423,7 +423,8 @@ class McpServer(TimestampMixin, Base):
     url = Column(String, nullable=True)          # For SSE: server URL
     is_enabled = Column(Boolean, default=True)
     oauth_config = Column(Text, nullable=True)   # JSON: provider, keys_file, token_file, scopes
-    disabled_tools = Column(Text, nullable=True)  # JSON array of tool names to hide from LLM
+    disabled_tools = Column(Text, nullable=True)  # JSON array of tool names to hide from LLM (denylist)
+    allowed_tools = Column(Text, nullable=True)   # JSON array; when set, ONLY these tools are permitted (allowlist). NULL = no allowlist.
     oauth_tokens = Column(EncryptedText, nullable=True)  # JSON {tokens, client_info} for generic MCP OAuth, encrypted at rest
 
 
@@ -1481,6 +1482,18 @@ def _migrate_add_disabled_tools():
     except Exception as e:
         logging.getLogger(__name__).warning(f"disabled_tools migration: {e}")
 
+def _migrate_add_allowed_tools():
+    """Add allowed_tools column to mcp_servers table if missing (per-tool allowlist)."""
+    try:
+        with engine.connect() as conn:
+            cols = [r[1] for r in conn.execute(text("PRAGMA table_info(mcp_servers)"))]
+            if "allowed_tools" not in cols:
+                conn.execute(text("ALTER TABLE mcp_servers ADD COLUMN allowed_tools TEXT"))
+                conn.commit()
+                logging.getLogger(__name__).info("Added allowed_tools column to mcp_servers")
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"allowed_tools migration: {e}")
+
 def _migrate_add_mcp_oauth_tokens_column():
     """Add oauth_tokens column to mcp_servers table if missing.
 
@@ -1785,6 +1798,7 @@ def init_db():
     _migrate_add_oauth_config()
     _migrate_add_task_automation_columns()
     _migrate_add_disabled_tools()
+    _migrate_add_allowed_tools()
     _migrate_add_mcp_oauth_tokens_column()
     _migrate_add_task_v2_columns()
     _migrate_add_notifications_enabled()
