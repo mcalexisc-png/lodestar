@@ -10,3 +10,4 @@ Format: `NNNN-title-with-dashes.md`, numbered sequentially.
 ## Index
 
 - [0001 - Fork Odysseus as Lodestar](0001-fork-odysseus-as-lodestar.md)
+- [0002 - "opencode" is an LLM provider, not a Node/npx runtime dependency](0002-opencode-provider-vs-playwright-node-coupling.md)
