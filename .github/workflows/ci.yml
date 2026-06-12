@@ -165,6 +165,11 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
         if: steps.docs-check.outputs.docs_only != 'true'
+      # Optional tool deps so the optional-path tests (e.g. the feedparser RSS
+      # plugin happy path) run too. sqlite-vec is already in requirements.txt
+      # (embedded vector store is a default backend).
+      - run: pip install feedparser
+        if: steps.docs-check.outputs.docs_only != 'true'
       - run: mkdir -p data  # sqlite DB lives at ./data/app.db
         if: steps.docs-check.outputs.docs_only != 'true'
       - run: python -m pytest -q

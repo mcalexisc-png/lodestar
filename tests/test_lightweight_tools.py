@@ -180,3 +180,42 @@ def test_rss_handles_missing_feedparser(loader, monkeypatch):
     res = _run(loader.execute("rss_read", json.dumps({"url": "https://example.com/feed"}), {}))
     assert res["exit_code"] == 1
     assert "feedparser is not installed" in res["error"]
+
+
+def test_rss_parses_when_feedparser_present(loader, monkeypatch):
+    """Happy path with feedparser installed (skipped if it isn't)."""
+    pytest.importorskip("feedparser")
+    import feedparser
+
+    class _Feed:
+        title = "Example Feed"
+
+    class _Entry:
+        title = "Item 1"
+        link = "https://example.com/1"
+        published = "2026-01-01"
+        summary = "hello"
+
+    fake = type("P", (), {"feed": _Feed(), "entries": [_Entry()]})()
+    monkeypatch.setattr(feedparser, "parse", lambda url: fake)
+
+    res = _run(loader.execute("rss_read", json.dumps({"url": "https://example.com/feed"}), {}))
+    assert res["exit_code"] == 0
+    assert res["feed"] == "Example Feed"
+    assert res["entries"][0]["title"] == "Item 1"
+
+
+def test_rss_capability_denied(loader, monkeypatch):
+    """If the host denies the 'net' capability, the RSS tool refuses."""
+    # Force the loader to hand the plugin a guard that denies 'net'.
+    from src.plugins import loader as loader_mod
+
+    def _deny_guard(manifest):
+        def guard(cap):
+            raise PermissionError("net denied by host")
+        return guard
+
+    monkeypatch.setattr(loader_mod, "_make_capability_guard", _deny_guard)
+    res = _run(loader.execute("rss_read", json.dumps({"url": "https://example.com/feed"}), {}))
+    assert res["exit_code"] == 1
+    assert "net denied" in res["error"]
