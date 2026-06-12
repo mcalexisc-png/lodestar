@@ -107,24 +107,39 @@ def _hosted_endpoint_configured() -> bool:
 
 
 def select_embedding_provider(settings: dict, lite: bool):
-    """Return an embedding provider (``encode`` + ``get_sentence_embedding_dimension``),
-    or ``None`` for keyword-only.
+    """Return an ``EmbeddingProvider`` adapter, or ``None`` for keyword-only.
 
-    - Lite: hosted **only if** a hosted endpoint is configured; otherwise
-      ``None`` (no local ONNX load → idle RSS unchanged).
-    - Full: the existing ``get_embedding_client()`` factory (hosted, else
-      local fastembed) — today's behavior.
+    - Lite: a ``HostedEmbeddingProvider`` **only if** a hosted endpoint is
+      configured; otherwise ``None`` (no local ONNX load → idle RSS
+      unchanged). Lite never constructs the fastembed adapter.
+    - Full: hosted if reachable, else local fastembed — today's behavior,
+      delegated to the existing ``get_embedding_client()`` factory (HTTP-down
+      latch, persisted-endpoint logic) and classified into the matching
+      adapter.
 
-    Step 3 replaces this with explicit Hosted/FastEmbed/Keyword provider
-    classes; for now it reuses the existing factory, which already returns an
-    object that structurally satisfies the EmbeddingProvider Protocol.
+    The returned object exposes ``name``/``available``/``model`` on top of the
+    ``encode`` + ``get_sentence_embedding_dimension`` contract, so the vector
+    store can fingerprint it and callers can check availability uniformly.
     """
-    if lite and not _hosted_endpoint_configured():
-        return None
+    from src.providers.embedding_adapters import (
+        HostedEmbeddingProvider,
+        wrap_embedding_client,
+    )
+
+    if lite:
+        if not _hosted_endpoint_configured():
+            return None
+        # Lite: hosted only, never fall back to local ONNX.
+        try:
+            return HostedEmbeddingProvider()
+        except Exception as e:
+            logger.warning("hosted embedding provider unavailable in lite (%s); keyword fallback", e)
+            return None
+
     try:
         from src.embeddings import get_embedding_client
 
-        return get_embedding_client()
+        return wrap_embedding_client(get_embedding_client())
     except Exception as e:
         logger.warning("embedding provider selection failed (%s); keyword fallback", e)
         return None

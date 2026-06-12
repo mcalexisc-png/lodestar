@@ -50,11 +50,37 @@ def test_lite_without_hosted_endpoint_is_keyword_only(monkeypatch):
     assert selection.select_embedding_provider({}, lite=True) is None
 
 
-def test_lite_with_hosted_endpoint_returns_provider(monkeypatch):
+def test_lite_no_endpoint_does_not_import_fastembed(monkeypatch):
+    """Selecting an embedder in lite-without-endpoint must not import the heavy
+    fastembed/ONNX stack — that's what keeps the lite idle-RSS baseline intact.
+    """
+    import sys
+
+    monkeypatch.delenv("EMBEDDING_URL", raising=False)
+    monkeypatch.setattr(selection, "_hosted_endpoint_configured", lambda: False)
+    # Guard against fastembed sneaking in via selection (it may already be
+    # imported by an earlier test; only assert selection itself doesn't pull it).
+    pre_fastembed = "fastembed" in sys.modules
+    provider = selection.select_embedding_provider({}, lite=True)
+    assert provider is None
+    if not pre_fastembed:
+        assert "fastembed" not in sys.modules
+
+
+def test_lite_with_hosted_endpoint_returns_hosted_provider(monkeypatch):
     monkeypatch.setattr(selection, "_hosted_endpoint_configured", lambda: True)
-    sentinel = object()
-    monkeypatch.setattr("src.embeddings.get_embedding_client", lambda: sentinel)
-    assert selection.select_embedding_provider({}, lite=True) is sentinel
+
+    class _FakeClient:
+        model = "m"
+        url = "http://x/v1/embeddings"
+
+    monkeypatch.setattr("src.embeddings.EmbeddingClient", lambda *a, **k: _FakeClient())
+    provider = selection.select_embedding_provider({}, lite=True)
+    assert provider is not None
+    assert provider.name == "hosted"
+    assert provider.available is True
+    # Lite must never construct the local fastembed adapter.
+    assert type(provider).__name__ == "HostedEmbeddingProvider"
 
 
 def test_select_vector_store_none_without_provider(monkeypatch):
