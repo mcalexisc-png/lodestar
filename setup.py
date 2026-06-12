@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Odysseus — first-time setup script.
+"""Lodestar — first-time setup script.
 
 Creates data directories, initializes the database, and sets up an
 initial admin user. Safe to re-run (skips what already exists).
@@ -223,7 +223,7 @@ def check_arch():
 
 
 def main():
-    print("\n=== Odysseus Setup ===\n")
+    print("\n=== Lodestar Setup ===\n")
 
     # Fail fast with a clear message if the CPU architecture is wrong (Apple
     # Silicon under an x86/Rosetta Python) before importing anything native.
