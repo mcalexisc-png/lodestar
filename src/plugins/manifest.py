@@ -53,6 +53,14 @@ class PluginManifest:
     handler: Optional[Any] = None
     parameters: Optional[Dict[str, Any]] = None
     min_app_version: Optional[str] = None
+    # Optional UI panel registered by the plugin. Two safe shapes only — no
+    # arbitrary JS is ever injected into the vanilla frontend:
+    #   {"type": "schema", "title": str, "widgets": [ ... ]}
+    #       declarative widgets from a fixed vocabulary (heading/text/list/
+    #       key_value/link/badge), rendered by static/js/pluginPanels.js.
+    #   {"type": "iframe", "title": str, "url": str, "height": int}
+    #       a sandboxed <iframe> (no allow-same-origin to the host).
+    panel: Optional[Dict[str, Any]] = None
 
     def validate(self) -> None:
         if not self.name or not isinstance(self.name, str):
@@ -69,6 +77,75 @@ class PluginManifest:
 
     def has_capability(self, cap: Capability) -> bool:
         return cap in (self.capabilities or [])
+
+    #: Allowlisted declarative widget types. Anything else is dropped — this is
+    #: what keeps a plugin from injecting arbitrary markup/JS.
+    _ALLOWED_WIDGETS = {"heading", "text", "list", "key_value", "link", "badge"}
+
+    def sanitized_panel(self) -> Optional[Dict[str, Any]]:
+        """Return a safe, normalized copy of the panel spec, or None.
+
+        Enforces the fixed widget vocabulary for schema panels and the
+        sandboxed-iframe contract for iframe panels. Unknown fields/widget
+        types are dropped rather than passed through.
+        """
+        panel = self.panel
+        if not isinstance(panel, dict):
+            return None
+        ptype = panel.get("type")
+        title = str(panel.get("title") or self.name)
+
+        if ptype == "iframe":
+            url = str(panel.get("url") or "").strip()
+            if not url:
+                return None
+            try:
+                height = int(panel.get("height", 360))
+            except (TypeError, ValueError):
+                height = 360
+            return {
+                "plugin": self.name,
+                "type": "iframe",
+                "title": title,
+                "url": url,
+                "height": max(120, min(height, 1200)),
+            }
+
+        if ptype == "schema":
+            widgets_out = []
+            for w in panel.get("widgets") or []:
+                if not isinstance(w, dict):
+                    continue
+                wtype = w.get("type")
+                if wtype not in self._ALLOWED_WIDGETS:
+                    continue
+                safe = {"type": wtype}
+                if wtype == "heading":
+                    safe["text"] = str(w.get("text", ""))
+                elif wtype == "text":
+                    safe["text"] = str(w.get("text", ""))
+                elif wtype == "list":
+                    safe["items"] = [str(i) for i in (w.get("items") or [])]
+                elif wtype == "key_value":
+                    pairs = w.get("pairs") or {}
+                    if isinstance(pairs, dict):
+                        safe["pairs"] = {str(k): str(v) for k, v in pairs.items()}
+                    else:
+                        safe["pairs"] = {}
+                elif wtype == "link":
+                    safe["text"] = str(w.get("text", ""))
+                    safe["href"] = str(w.get("href", ""))
+                elif wtype == "badge":
+                    safe["text"] = str(w.get("text", ""))
+                widgets_out.append(safe)
+            return {
+                "plugin": self.name,
+                "type": "schema",
+                "title": title,
+                "widgets": widgets_out,
+            }
+
+        return None
 
     def to_tool_schema(self) -> Dict[str, Any]:
         """Render an OpenAI-compatible function schema for the LLM.

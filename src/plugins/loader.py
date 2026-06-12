@@ -208,6 +208,15 @@ class PluginLoader:
     def tool_schemas(self) -> List[Dict]:
         return [m.to_tool_schema() for m in self.enabled_manifests()]
 
+    def panels(self) -> List[Dict]:
+        """Return sanitized UI panel specs for enabled plugins that define one."""
+        out = []
+        for m in self.enabled_manifests():
+            panel = m.sanitized_panel()
+            if panel:
+                out.append(panel)
+        return out
+
     # ── execution ────────────────────────────────────────────────────────────
 
     def _resolve_handler(self, manifest: PluginManifest):

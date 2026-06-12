@@ -23,6 +23,22 @@ def manifest() -> PluginManifest:
         parameters={
             "input": {"type": "string", "description": "The text to analyze."},
         },
+        # A minimal declarative UI panel proving the safe (no-JS) panel path.
+        panel={
+            "type": "schema",
+            "title": "Text Stats",
+            "widgets": [
+                {"type": "heading", "text": "Text statistics"},
+                {"type": "text", "text": "Ask the assistant to count words, "
+                                         "characters, lines, or sentences in any text."},
+                {"type": "list", "items": [
+                    "characters / characters (no spaces)",
+                    "words / average word length",
+                    "lines / sentences",
+                ]},
+                {"type": "badge", "text": "example plugin"},
+            ],
+        },
     )
 
 

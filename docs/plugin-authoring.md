@@ -99,6 +99,37 @@ Keep heavy imports **inside** the handler so discovery stays cheap.
 (text statistics). Its `manifest()` is read at startup; its `run()` is imported
 only when the `text_stats` tool is first called.
 
+### UI panels (optional, safe)
+
+A plugin may register a UI panel via `manifest.panel`. Two shapes only — there
+is **no path to inject arbitrary JS** into the vanilla frontend:
+
+```python
+# Declarative schema panel: fixed widget vocabulary, rendered with DOM APIs.
+panel = {
+    "type": "schema",
+    "title": "My Tool",
+    "widgets": [
+        {"type": "heading", "text": "..."},
+        {"type": "text", "text": "..."},
+        {"type": "list", "items": ["a", "b"]},
+        {"type": "key_value", "pairs": {"k": "v"}},
+        {"type": "link", "text": "docs", "href": "https://..."},   # http(s) only
+        {"type": "badge", "text": "..."},
+    ],
+}
+
+# OR a sandboxed iframe (opaque origin: no access to the host page).
+panel = {"type": "iframe", "title": "My Tool", "url": "https://...", "height": 360}
+```
+
+The host sanitizes the panel server-side (`PluginManifest.sanitized_panel()`):
+unknown widget types are dropped, values are stringified, iframe height is
+clamped, and `javascript:`/`data:` links are rendered inert. The frontend
+renderer (`static/js/pluginPanels.js`) builds elements with `textContent`
+(never `innerHTML`) and sandboxes iframes without `allow-same-origin`. Panels
+are served from `GET /api/plugins/panels`.
+
 ### Managing plugins
 
 ```
