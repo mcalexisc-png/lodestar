@@ -32,7 +32,8 @@ export const THEMES = {
 };
 
 const DEFAULT_THEME = 'dark';
-const LS_KEY = 'odysseus-theme';
+const LS_KEY = 'lodestar-theme';
+const LEGACY_LS_KEY = 'odysseus-theme';
 const CUSTOM_THEMES_KEY = 'odysseus-custom-themes';
 
 const FONT_MAP = {
@@ -441,7 +442,9 @@ export function applyBgPattern(pattern) {
 }
 
 export function getSaved() {
-  const obj = Storage.getJSON(LS_KEY, null);
+  let obj = Storage.getJSON(LS_KEY, null);
+  // Migration: 'odysseus-theme' was renamed to 'lodestar-theme'
+  if (obj === null) obj = Storage.getJSON(LEGACY_LS_KEY, null);
   // Migration: 'chatgpt' preset was renamed to 'gpt'
   if (obj && obj.name === 'chatgpt') obj.name = 'gpt';
   // Migration: 'sakura' preset was renamed to 'ume'

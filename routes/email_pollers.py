@@ -1074,7 +1074,7 @@ def _scheduled_poll_once() -> dict:
 async def _scheduled_email_poller():
     """Background task that checks for due scheduled emails every 30
     seconds. Each tick delegates to `_scheduled_poll_once`, which is
-    also exposed via the `odysseus-mail poll-scheduled` CLI for
+    also exposed via the `lodestar-mail poll-scheduled` CLI for
     cron-driven deployments."""
     import asyncio
 

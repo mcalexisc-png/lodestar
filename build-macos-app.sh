@@ -27,22 +27,22 @@ echo "  port:        $PORT"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
-# ── Icon (best effort) — center-crop docs/odysseus.jpg to a square .icns ──
-if [ -f "$REPO_DIR/docs/odysseus.jpg" ] && command -v sips >/dev/null 2>&1; then
+# ── Icon (best effort) — center-crop docs/lodestar.jpg to a square .icns ──
+if [ -f "$REPO_DIR/docs/lodestar.jpg" ] && command -v sips >/dev/null 2>&1; then
   TMPIMG="$(mktemp -d)"
   # Center-crop to a square, scale to 512 (sips' icns encoder caps at 512), and
   # let sips emit the .icns directly — more robust across macOS versions than
   # building an .iconset by hand.
-  sips -c 720 720 "$REPO_DIR/docs/odysseus.jpg" --out "$TMPIMG/sq.png" >/dev/null 2>&1 || cp "$REPO_DIR/docs/odysseus.jpg" "$TMPIMG/sq.png"
+  sips -c 720 720 "$REPO_DIR/docs/lodestar.jpg" --out "$TMPIMG/sq.png" >/dev/null 2>&1 || cp "$REPO_DIR/docs/lodestar.jpg" "$TMPIMG/sq.png"
   sips -z 512 512 "$TMPIMG/sq.png" --out "$TMPIMG/icon.png" >/dev/null 2>&1
-  if sips -s format icns "$TMPIMG/icon.png" --out "$APP/Contents/Resources/odysseus.icns" >/dev/null 2>&1; then
-    echo "  icon:        odysseus.icns"
+  if sips -s format icns "$TMPIMG/icon.png" --out "$APP/Contents/Resources/lodestar.icns" >/dev/null 2>&1; then
+    echo "  icon:        lodestar.icns"
   else
     echo "  icon:        (skipped — conversion failed)"
   fi
   rm -rf "$TMPIMG"
 else
-  echo "  icon:        (skipped — no docs/odysseus.jpg)"
+  echo "  icon:        (skipped — no docs/lodestar.jpg)"
 fi
 
 # ── Info.plist ──
@@ -53,12 +53,12 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <dict>
     <key>CFBundleName</key>            <string>$APP_NAME</string>
     <key>CFBundleDisplayName</key>     <string>$APP_NAME</string>
-    <key>CFBundleIdentifier</key>      <string>com.odysseus.launcher</string>
+    <key>CFBundleIdentifier</key>      <string>com.lodestar.launcher</string>
     <key>CFBundleVersion</key>         <string>1.0</string>
     <key>CFBundleShortVersionString</key><string>1.0</string>
     <key>CFBundlePackageType</key>     <string>APPL</string>
     <key>CFBundleExecutable</key>      <string>$APP_NAME</string>
-    <key>CFBundleIconFile</key>        <string>odysseus</string>
+    <key>CFBundleIconFile</key>        <string>lodestar</string>
     <key>LSMinimumSystemVersion</key>  <string>11.0</string>
     <key>NSHighResolutionCapable</key> <true/>
     <key>LSUIElement</key>             <false/>
@@ -76,7 +76,7 @@ URL="http://127.0.0.1:${PORT}"
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
 UVICORN="$INSTALL_DIR/venv/bin/uvicorn"
-LOG="$INSTALL_DIR/logs/odysseus-app.log"
+LOG="$INSTALL_DIR/logs/lodestar-app.log"
 
 notify() { /usr/bin/osascript -e "display notification \"$1\" with title \"Lodestar\"" >/dev/null 2>&1; }
 die_gui() {

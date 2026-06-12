@@ -5102,7 +5102,7 @@ async function _cmdSetup(args, ctx) {
         return true;
       }
 
-      const current = (Storage.getJSON(Storage.KEYS.THEME, {}).name) || 'dark';
+      const current = (Storage.getJSON(Storage.KEYS.THEME, null) || Storage.getJSON('odysseus-theme', {})).name || 'dark';
       const customLabel = customKeys.length ? `\n\nCustom: ${customKeys.join(', ')}` : '';
       await typewriterReply(`Current theme: ${current}\n\nAvailable: ${presets.join(', ')}${customLabel}\n\nType a theme name to switch.`);
       setupMode = 'theme';

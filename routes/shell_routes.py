@@ -385,7 +385,7 @@ def _find_line_break(buf):
 EXEC_TIMEOUT = 30  # seconds — shorter than agent's 60s
 STREAM_TIMEOUT = 120  # default for short commands
 MAX_OUTPUT = 200_000  # truncate limit
-TMUX_LOG_DIR = Path(tempfile.gettempdir()) / "odysseus-tmux"
+TMUX_LOG_DIR = Path(tempfile.gettempdir()) / "lodestar-tmux"
 PTY_UNSUPPORTED_ERROR = "pty_unsupported"
 
 

@@ -930,7 +930,7 @@ def _ssh_ps(host, script_path, port=None):
 
 
 # Windows session dir — stored in user's temp on the remote
-WIN_SESSION_DIR = "$env:TEMP\\\\odysseus-sessions"
+WIN_SESSION_DIR = "$env:TEMP\\\\lodestar-sessions"
 
 
 def _diagnose_serve_output(text: str) -> dict | None:

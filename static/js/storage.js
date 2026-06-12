@@ -3,7 +3,7 @@
 
 // ── Key constants ──
 export const KEYS = {
-  THEME: 'odysseus-theme',
+  THEME: 'lodestar-theme',
   TOGGLES: 'odysseus-toggles',
   SIDEBAR_COLLAPSED: 'sidebar-collapsed',
   SIDEBAR_WIDTH: 'sidebar-width',

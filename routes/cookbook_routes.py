@@ -284,7 +284,7 @@ def setup_cookbook_routes() -> APIRouter:
             # which_tool so the .exe is found even when PATHEXT is unusual.
             ssh_keygen = which_tool("ssh-keygen") or "ssh-keygen"
             proc = await asyncio.create_subprocess_exec(
-                ssh_keygen, "-t", "ed25519", "-N", "", "-C", "odysseus-cookbook", "-f", str(key_path),
+                ssh_keygen, "-t", "ed25519", "-N", "", "-C", "lodestar-cookbook", "-f", str(key_path),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -497,7 +497,7 @@ def setup_cookbook_routes() -> APIRouter:
             # ── Windows remote: generate .ps1 runner, use Start-Process for background ──
             remote_runner = f".{session_id}_run.ps1"
             ps_lines = []
-            ps_lines.append('$sessionDir = "$env:TEMP\\odysseus-sessions"')
+            ps_lines.append('$sessionDir = "$env:TEMP\\lodestar-sessions"')
             ps_lines.append('New-Item -ItemType Directory -Force -Path $sessionDir | Out-Null')
             if req.hf_token:
                 ps_lines.append(f"$env:HF_TOKEN = '{_ps_squote(req.hf_token)}'")
@@ -551,7 +551,7 @@ def setup_cookbook_routes() -> APIRouter:
             _pf = f"-p {_port} " if _port and _port != "22" else ""
             # Start-Process creates a fully detached process that survives SSH disconnect
             launch_ps = (
-                "$sd = \\\"$env:TEMP\\odysseus-sessions\\\"; "
+                "$sd = \\\"$env:TEMP\\lodestar-sessions\\\"; "
                 f"Start-Process powershell -ArgumentList '-ExecutionPolicy','Bypass','-File','$HOME\\{remote_runner}' "
                 f"-RedirectStandardOutput \\\"$sd\\{session_id}.log\\\" "
                 f"-RedirectStandardError \\\"$sd\\{session_id}.err.log\\\" "
@@ -1285,7 +1285,7 @@ def setup_cookbook_routes() -> APIRouter:
             # ── Windows remote: generate .ps1 serve runner ──
             remote_runner = f".{session_id}_run.ps1"
             ps_lines = []
-            ps_lines.append('$sessionDir = "$env:TEMP\\odysseus-sessions"')
+            ps_lines.append('$sessionDir = "$env:TEMP\\lodestar-sessions"')
             ps_lines.append('New-Item -ItemType Directory -Force -Path $sessionDir | Out-Null')
             if req.hf_token:
                 ps_lines.append(f"$env:HF_TOKEN = '{_ps_squote(req.hf_token)}'")
@@ -1322,7 +1322,7 @@ def setup_cookbook_routes() -> APIRouter:
             _Pf = f"-P {_port} " if _port and _port != "22" else ""
             _pf = f"-p {_port} " if _port and _port != "22" else ""
             launch_ps = (
-                "$sd = \\\"$env:TEMP\\odysseus-sessions\\\"; "
+                "$sd = \\\"$env:TEMP\\lodestar-sessions\\\"; "
                 f"Start-Process powershell -ArgumentList '-ExecutionPolicy','Bypass','-File','$HOME\\{remote_runner}' "
                 f"-RedirectStandardOutput \\\"$sd\\{session_id}.log\\\" "
                 f"-RedirectStandardError \\\"$sd\\{session_id}.err.log\\\" "
@@ -1345,10 +1345,10 @@ def setup_cookbook_routes() -> APIRouter:
             # the post-crash interactive shell's neofetch banner ALSO gets
             # teed into the log file and `tail -N` returns ONLY the banner —
             # the actual traceback ends up earlier than the tail window.
-            runner_lines.append("mkdir -p /tmp/odysseus-tmux 2>/dev/null || true")
+            runner_lines.append("mkdir -p /tmp/lodestar-tmux 2>/dev/null || true")
             runner_lines.append("exec 3>&1 4>&2")
             runner_lines.append(
-                f"exec > >(tee -a /tmp/odysseus-tmux/{session_id}.log) 2>&1"
+                f"exec > >(tee -a /tmp/lodestar-tmux/{session_id}.log) 2>&1"
             )
             runner_lines.extend(_user_shell_path_bootstrap())
             runner_lines.append('LODESTAR_PREFLIGHT_EXIT=""')
@@ -1676,7 +1676,7 @@ def setup_cookbook_routes() -> APIRouter:
             # Also create the session directory for background tasks
             setup_script = (
                 'powershell -Command "'
-                "New-Item -ItemType Directory -Force -Path $env:TEMP\\odysseus-sessions | Out-Null; "
+                "New-Item -ItemType Directory -Force -Path $env:TEMP\\lodestar-sessions | Out-Null; "
                 "try { python --version } catch { Write-Host 'ERROR: Python not found — install from python.org'; exit 1 }; "
                 "python -m pip install -q huggingface-hub 2>$null; "
                 "python -c \\\"from huggingface_hub import snapshot_download; print('OK')\\\""
@@ -2549,7 +2549,7 @@ def setup_cookbook_routes() -> APIRouter:
                 async with _httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
                     resp = await client.get(
                         "https://ollama.com/search?sort=popular",
-                        headers={"User-Agent": "odysseus-cookbook/1.0"},
+                        headers={"User-Agent": "lodestar-cookbook/1.0"},
                     )
                 if resp.status_code == 200:
                     html = resp.text
@@ -2763,7 +2763,7 @@ def setup_cookbook_routes() -> APIRouter:
                     continue
             if task_platform == "windows" and remote:
                 # Windows: check PID file + Get-Process, read log tail
-                sd = "$env:TEMP\\odysseus-sessions"
+                sd = "$env:TEMP\\lodestar-sessions"
                 ssh_base = ["ssh"]
                 if _tport and _tport != "22":
                     ssh_base.extend(["-p", str(_tport)])
