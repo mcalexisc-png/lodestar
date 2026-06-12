@@ -47,11 +47,41 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # instances created within the process, not just the primary application engine.
 # The isinstance(sqlite3.Connection) check ensures that this PRAGMA foreign_keys=ON
 # configuration remains a no-op when using non-SQLite database backends.
+#
+# WAL + synchronous=NORMAL trade a small durability window (a few committed
+# transactions can be lost on OS crash / power loss, never on app crash) for
+# much lower write latency and far less lock contention on spinning disks —
+# the standard recommended pairing for SQLite. cache_size/mmap_size raise the
+# page cache and let SQLite memory-map the DB file, cutting read syscalls on
+# HDDs; busy_timeout makes concurrent writers retry instead of failing
+# immediately with "database is locked".
+#
+# TODO(lodestar): only the SQLAlchemy engine connections (app.db) get these
+# pragmas. routes/email_pollers.py, email_helpers.py, email_routes.py, and
+# task_routes.py open SCHEDULED_DB via raw sqlite3.connect() and bypass this
+# hook — a future pass should add a shared sqlite_connect() helper here for
+# those call sites too.
+_LITE_CACHE_SIZE = "-8000"      # ~8 MB page cache
+_LITE_MMAP_SIZE = "33554432"    # 32 MB
+_FULL_CACHE_SIZE = "-20000"     # ~20 MB page cache
+_FULL_MMAP_SIZE = "134217728"   # 128 MB
+
+
 @event.listens_for(Engine, "connect")
 def set_sqlite_pragma(dbapi_connection, connection_record):
     if isinstance(dbapi_connection, sqlite3.Connection):
+        from src.constants import LODESTAR_LITE
+
+        cache_size = _LITE_CACHE_SIZE if LODESTAR_LITE else _FULL_CACHE_SIZE
+        mmap_size = _LITE_MMAP_SIZE if LODESTAR_LITE else _FULL_MMAP_SIZE
+
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute(f"PRAGMA cache_size={cache_size}")
+        cursor.execute(f"PRAGMA mmap_size={mmap_size}")
+        cursor.execute("PRAGMA busy_timeout=5000")
         cursor.close()
 
 
