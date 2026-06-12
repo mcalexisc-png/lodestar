@@ -13,6 +13,7 @@ import sys
 import asyncio
 
 from core.platform_compat import IS_WINDOWS, which_tool
+from src.constants import LODESTAR_LITE
 from src.env_compat import getenv as _getenv_compat
 
 logger = logging.getLogger(__name__)
@@ -123,6 +124,13 @@ async def register_builtin_servers(mcp_manager):
             logger.warning(f"Built-in MCP server script not found: {script_path}")
             continue
         asyncio.create_task(_connect_python_server(server_id, script_path, name))
+
+    if LODESTAR_LITE:
+        logger.info(
+            "Skipping built-in NPX MCP servers (e.g. browser/Playwright) "
+            "in lite mode (LODESTAR_LITE=true)"
+        )
+        return
 
     # Register NPX-based servers in the background (they take longer to start)
     npx_path = _find_npx()

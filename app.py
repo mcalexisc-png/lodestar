@@ -470,16 +470,28 @@ init_youtube()
 # 2.12 were mutually incompatible at the time. With the current pins
 # (chromadb 1.5.x + pydantic 2.13.x) the init works and Personal Docs
 # (POST /api/personal/add_directory etc.) is functional again.
-from src.rag_singleton import get_rag_manager
-rag_manager = get_rag_manager()
-rag_available = rag_manager is not None
-if rag_available:
-    logger.info("Vector document RAG initialized")
+#
+# Under LODESTAR_LITE, skip this call entirely: get_rag_manager() would
+# otherwise import chromadb/fastembed and attempt a ChromaDB connection on
+# every cold start. Personal-doc routes already handle rag_manager=None /
+# rag_available=False with a clean 503, so this is behavior-preserving for
+# lite installs that don't run the ChromaDB container.
+from src.constants import LODESTAR_LITE as _LODESTAR_LITE
+if _LODESTAR_LITE:
+    rag_manager = None
+    rag_available = False
+    logger.info("Vector document RAG skipped (LODESTAR_LITE=true)")
 else:
-    logger.info(
-        "Vector document RAG not available at startup "
-        "(ChromaDB may not be reachable yet — routes will retry lazily)"
-    )
+    from src.rag_singleton import get_rag_manager
+    rag_manager = get_rag_manager()
+    rag_available = rag_manager is not None
+    if rag_available:
+        logger.info("Vector document RAG initialized")
+    else:
+        logger.info(
+            "Vector document RAG not available at startup "
+            "(ChromaDB may not be reachable yet — routes will retry lazily)"
+        )
 
 # ========= IMPORT CONFIG =========
 from src.config import config
@@ -934,6 +946,12 @@ async def _startup_event():
     # one-time ~1-3s cost that otherwise lands on the user's FIRST message
     # (showing up as a big `tool_selection` time). Doing it here makes the
     # first turn as fast as subsequent ones (warm embed ≈ a few ms).
+    #
+    # Skipped under LODESTAR_LITE: get_tool_index() imports numpy/chromadb/
+    # fastembed, which lite mode otherwise avoids at boot. Agent tool
+    # selection still works — get_tool_index() degrades to None on failure
+    # the same way it would in full mode without ChromaDB, and agent_loop /
+    # task_scheduler call it lazily on first use.
     async def _warmup_tool_index():
         try:
             from src.tool_index import get_tool_index
@@ -944,7 +962,10 @@ async def _startup_event():
         except Exception as e:
             logger.warning(f"Tool index warmup failed (non-critical): {type(e).__name__}: {e}")
 
-    _startup_tasks.append(asyncio.create_task(_warmup_tool_index()))
+    if _LODESTAR_LITE:
+        logger.info("Tool index pre-warm skipped (LODESTAR_LITE=true)")
+    else:
+        _startup_tasks.append(asyncio.create_task(_warmup_tool_index()))
     # Warmup: ping all known LLM endpoints to prime connections
     async def _warmup_endpoints():
         try:

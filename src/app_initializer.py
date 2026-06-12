@@ -6,7 +6,7 @@ from typing import Dict, Any
 
 from src.constants import (
     DATA_DIR, PERSONAL_DIR, RUNBOOK_DIR, UPLOAD_DIR,
-    SESSIONS_FILE, DEFAULT_HOST, OPENAI_API_KEY
+    SESSIONS_FILE, DEFAULT_HOST, OPENAI_API_KEY, LODESTAR_LITE
 )
 from src.memory import MemoryManager
 from src.memory_provider import MemoryProviderRegistry, NativeMemoryProvider
@@ -55,24 +55,30 @@ def initialize_managers(base_dir: str, rag_manager=None) -> Dict[str, Any]:
 
     # Initialize memory vector store (share embedding model with RAG if available)
     memory_vector = None
-    try:
-        from src.memory_vector import MemoryVectorStore
-        embedding_model = getattr(rag_manager, '_model', None) if rag_manager else None
-        memory_vector = MemoryVectorStore(DATA_DIR, embedding_model=embedding_model)
-        if memory_vector.healthy:
-            # Rebuild index from existing memories if empty
-            if memory_vector.count() == 0:
-                existing = memory_manager.load()
-                if existing:
-                    memory_vector.rebuild(existing)
-                    logger.info(f"Rebuilt memory vector index from {len(existing)} existing entries")
-            logger.info("MemoryVectorStore initialized")
-        else:
-            logger.warning("MemoryVectorStore DEGRADED: ChromaDB vector memory unavailable")
+    if LODESTAR_LITE:
+        # Skip ChromaDB/fastembed entirely — NativeMemoryProvider.recall()
+        # already falls back to memory_manager.get_relevant_memories()
+        # (keyword search) when memory_vector is None.
+        logger.info("Memory vector store skipped (LODESTAR_LITE=true); using keyword memory search")
+    else:
+        try:
+            from src.memory_vector import MemoryVectorStore
+            embedding_model = getattr(rag_manager, '_model', None) if rag_manager else None
+            memory_vector = MemoryVectorStore(DATA_DIR, embedding_model=embedding_model)
+            if memory_vector.healthy:
+                # Rebuild index from existing memories if empty
+                if memory_vector.count() == 0:
+                    existing = memory_manager.load()
+                    if existing:
+                        memory_vector.rebuild(existing)
+                        logger.info(f"Rebuilt memory vector index from {len(existing)} existing entries")
+                logger.info("MemoryVectorStore initialized")
+            else:
+                logger.warning("MemoryVectorStore DEGRADED: ChromaDB vector memory unavailable")
+                memory_vector = None
+        except Exception as e:
+            logger.warning(f"MemoryVectorStore DEGRADED: {e}")
             memory_vector = None
-    except Exception as e:
-        logger.warning(f"MemoryVectorStore DEGRADED: {e}")
-        memory_vector = None
 
     memory_provider_registry = MemoryProviderRegistry([
         NativeMemoryProvider(memory_manager, memory_vector),

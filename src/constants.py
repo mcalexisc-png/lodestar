@@ -81,9 +81,19 @@ SEARXNG_INSTANCE = os.getenv("SEARXNG_INSTANCE", "http://localhost:8080")
 CLEANUP_ENABLED = os.getenv("CLEANUP_ENABLED", "True").lower() == "true"
 CLEANUP_INTERVAL_HOURS = int(os.getenv("CLEANUP_INTERVAL_HOURS", "24"))
 
-# TODO(lodestar): LODESTAR_LITE is read here so it's documented and available,
-# but nothing checks it yet. Future low-end-hardware gating (lighter default
-# models, disabling heavier background features, etc.) should branch on this.
+# When true, gates a set of low-end-hardware defaults aimed at machines with
+# limited RAM/CPU and no GPU:
+#   - app.py skips the eager get_rag_manager() call at boot (no ChromaDB
+#     connection / fastembed-ONNX load for personal-doc RAG).
+#   - src/app_initializer.py skips MemoryVectorStore construction; semantic
+#     memory falls back to the existing keyword search in
+#     NativeMemoryProvider.recall().
+#   - src/builtin_mcp.py skips auto-starting the Playwright browser MCP
+#     (no npx/Chromium subprocess).
+#   - core/database.py uses smaller SQLite cache_size/mmap_size pragmas.
+# Web search already degrades from SearXNG to an API provider (DuckDuckGo by
+# default) via the existing provider fallback chain in
+# services/search/core.py, so no lite-specific branch is needed there.
 LODESTAR_LITE = os.getenv("LODESTAR_LITE", "false").lower() == "true"
 
 # Default parameters
