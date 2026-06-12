@@ -2,7 +2,7 @@
 """Application-wide constants and configuration values."""
 import os
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "0.1.0-dev"
 
 # Base paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/"
@@ -85,11 +85,11 @@ DEFAULT_MAX_TOKENS = 0
 
 
 def internal_api_base() -> str:
-    """Base URL for in-process loopback calls to Odysseus's own API.
+    """Base URL for in-process loopback calls to Lodestar's own API.
 
     Agent tools and background jobs reach admin-gated routes by calling the
     running server over HTTP. Resolution order:
-      1. ODYSSEUS_INTERNAL_BASE  - explicit override (e.g. behind a TLS proxy).
+      1. LODESTAR_INTERNAL_BASE  - explicit override (e.g. behind a TLS proxy).
       2. APP_PORT                - http://127.0.0.1:$APP_PORT (docker-compose).
       3. Fallback http://127.0.0.1:7000 - legacy default.
 

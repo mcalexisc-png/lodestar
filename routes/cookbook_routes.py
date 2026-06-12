@@ -49,7 +49,7 @@ _HF_TOKEN_STATUS_SNIPPET = (
     'echo "[odysseus] HF token: applied"; '
     'else '
     'echo "[odysseus] HF token: NOT SET — gated/private models will be denied. '
-    'Add one in Odysseus Settings -> Cookbook -> HuggingFace Token."; '
+    'Add one in Lodestar Settings -> Cookbook -> HuggingFace Token."; '
     'fi'
 )
 
@@ -449,7 +449,7 @@ def setup_cookbook_routes() -> APIRouter:
             lines.append(f"export HF_HUB_CACHE={_dl_hf_home_shell}/hub")
         # Ensure pip-user scripts (e.g. hf CLI installed via --user) are on PATH
         lines.append('export PATH="$HOME/.local/bin:$HOME/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"')
-        # When Odysseus runs from a venv (e.g. native macOS install), put its bin
+        # When Lodestar runs from a venv (e.g. native macOS install), put its bin
         # on PATH so the tmux shell finds the bundled `hf`/`python3` without an
         # activated venv. Local bash runs only — meaningless over SSH.
         if not req.remote_host:
@@ -768,7 +768,7 @@ def setup_cookbook_routes() -> APIRouter:
                 cwd=str(Path.home()),
             )
         else:
-            # LOCAL scan: use sys.executable (the venv Python Odysseus is already
+            # LOCAL scan: use sys.executable (the venv Python Lodestar is already
             # running under) — it's guaranteed real Python on all platforms.
             # Falling back to which_tool on Windows risks hitting the Microsoft
             # Store stub alias for "python3"/"python", which prints
@@ -1352,7 +1352,7 @@ def setup_cookbook_routes() -> APIRouter:
             )
             runner_lines.extend(_user_shell_path_bootstrap())
             runner_lines.append('ODYSSEUS_PREFLIGHT_EXIT=""')
-            # Put Odysseus's own venv bin on PATH (local runs only) so the serve
+            # Put Lodestar's own venv bin on PATH (local runs only) so the serve
             # shell resolves the bundled python3/hf, mirroring the download flow.
             if not remote:
                 runner_lines.append(_local_tooling_path_export(sys.executable))
@@ -2788,7 +2788,7 @@ def setup_cookbook_routes() -> APIRouter:
                 # Capture 500 lines (was 50) so a Python traceback survives
                 # the post-crash neofetch banner + bash prompt that otherwise
                 # fills the visible tail. Without this, output_tail ends up
-                # as just "Locale: C / Ubuntu_Odysseus ❯" and the agent
+                # as just "Locale: C / Ubuntu_Lodestar ❯" and the agent
                 # can't diagnose the actual error.
                 capture_cmd = ssh_base + [remote, "tmux", "capture-pane", "-t", session_id, "-p", "-S", "-500"]
             elif IS_WINDOWS:

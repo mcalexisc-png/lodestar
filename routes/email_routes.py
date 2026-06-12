@@ -57,7 +57,7 @@ from routes.email_pollers import _start_poller
 
 logger = logging.getLogger(__name__)
 
-ODYSSEUS_MAIL_ORIGIN = "odysseus-ui"
+ODYSSEUS_MAIL_ORIGIN = "lodestar-ui"
 
 
 def _email_tag_owner_aliases(account_id: str | None, owner: str = "") -> list[str]:
@@ -353,11 +353,11 @@ def _move_email_message(conn, uid: str, dest: str, role: str = "") -> bool:
 
 
 def _apply_odysseus_headers(msg, kind: str | None = None, ref_id: str | None = None):
-    msg["X-Odysseus-Origin"] = ODYSSEUS_MAIL_ORIGIN
+    msg["X-Lodestar-Origin"] = ODYSSEUS_MAIL_ORIGIN
     if kind:
-        msg["X-Odysseus-Kind"] = re.sub(r"[^A-Za-z0-9_.-]", "-", kind)[:64]
+        msg["X-Lodestar-Kind"] = re.sub(r"[^A-Za-z0-9_.-]", "-", kind)[:64]
     if ref_id:
-        msg["X-Odysseus-Ref"] = re.sub(r"[^A-Za-z0-9_.:-]", "-", ref_id)[:128]
+        msg["X-Lodestar-Ref"] = re.sub(r"[^A-Za-z0-9_.:-]", "-", ref_id)[:128]
 
 
 def _envelope_recipients(*fields: str) -> list:
@@ -677,12 +677,14 @@ def setup_email_routes():
                 # All emails NOT marked as answered/done (read or unread).
                 status, data = _imap_uid_search(conn, f"(UNANSWERED{from_clause})")
             elif filter_ == "reminders":
-                # Prefer the Odysseus marker header, but include the subject
-                # fallback too. The fallback uses a distinct Odysseus prefix
-                # so ordinary emails containing "Reminder" don't get mixed in.
+                # Prefer the Lodestar marker header, but include the subject
+                # fallback too (also matches reminders sent by older
+                # Lodestar instances, which used the same prefix style).
+                # The fallback uses a distinct prefix so ordinary emails
+                # containing "Reminder" don't get mixed in.
                 status, data = _imap_uid_search(
                     conn,
-                    f'(OR HEADER X-Odysseus-Kind "reminder" SUBJECT "Reminder (Odysseus):"{from_clause})',
+                    f'(OR HEADER X-Lodestar-Kind "reminder" OR SUBJECT "Reminder (Lodestar):" SUBJECT "Reminder (Lodestar):"{from_clause})',
                 )
             elif filter_ == "pending_30d":
                 # "What's pending in the last month" — UNANSWERED + delivered
@@ -1784,7 +1786,7 @@ def setup_email_routes():
         permanent: bool = Query(False),
         owner: str = Depends(require_owner),
     ):
-        """Delete email messages stamped as Odysseus reminders."""
+        """Delete email messages stamped as Lodestar reminders."""
         if account_id:
             _assert_owns_account(account_id, owner)
         deleted = 0
@@ -1822,12 +1824,14 @@ def setup_email_routes():
                         # Match the Reminders filter: new messages have the
                         # explicit kind header, and subject fallback catches
                         # clients/providers that stripped custom headers.
-                        uids.update(_search_uids(conn, f'(HEADER X-Odysseus-Kind {_search_quote("reminder")})'))
-                        uids.update(_search_uids(conn, f'(SUBJECT {_search_quote("Reminder (Odysseus):")})'))
+                        uids.update(_search_uids(conn, f'(HEADER X-Lodestar-Kind {_search_quote("reminder")})'))
+                        uids.update(_search_uids(conn, f'(SUBJECT {_search_quote("Reminder (Lodestar):")})'))
+                        uids.update(_search_uids(conn, f'(SUBJECT {_search_quote("Reminder (Lodestar):")})'))
                         for addr in own_addrs:
                             addr_q = _search_quote(addr)
-                            uids.update(_search_uids(conn, f'(FROM {addr_q} SUBJECT {_search_quote("Reminder (Odysseus):")})'))
-                            # Legacy reminders created before the Odysseus
+                            uids.update(_search_uids(conn, f'(FROM {addr_q} SUBJECT {_search_quote("Reminder (Lodestar):")})'))
+                            uids.update(_search_uids(conn, f'(FROM {addr_q} SUBJECT {_search_quote("Reminder (Lodestar):")})'))
+                            # Legacy reminders created before the Lodestar
                             # prefix still came from this mailbox as
                             # "Reminder: ..."; include them in Clear without
                             # sweeping unrelated external reminder emails.

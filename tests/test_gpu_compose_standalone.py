@@ -23,7 +23,7 @@ AMD_OVERLAY = ROOT / "docker" / "gpu.amd.yml"
 NVIDIA_STANDALONE = ROOT / "docker-compose.gpu-nvidia.yml"
 AMD_STANDALONE = ROOT / "docker-compose.gpu-amd.yml"
 
-SERVICE = "odysseus"
+SERVICE = "lodestar"
 
 
 def _load(path: Path) -> dict:
