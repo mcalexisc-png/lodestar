@@ -25,6 +25,7 @@ PROVIDER_INFO = {
     "google_pse": ("Google PSE",      True,  False),
     "tavily":   ("Tavily",            True,  False),
     "serper":   ("Serper",            True,  False),
+    "exa":      ("Exa",               True,  False),
     "disabled": ("Disabled",          False, False),
 }
 
@@ -57,6 +58,7 @@ def _get_provider_key(provider: str) -> str:
         "google_pse": "google_pse_key",
         "tavily": "tavily_api_key",
         "serper": "serper_api_key",
+        "exa": "exa_api_key",
     }
     field = key_map.get(provider, "")
     if field:
@@ -72,6 +74,7 @@ def _get_provider_key(provider: str) -> str:
         "google_pse": "GOOGLE_API_KEY",
         "tavily": "TAVILY_API_KEY",
         "serper": "SERPER_API_KEY",
+        "exa": "EXA_API_KEY",
     }
     env_name = env_map.get(provider, "")
     return (os.environ.get(env_name) or "").strip() if env_name else ""
@@ -579,6 +582,74 @@ def tavily_search(query: str, count: Optional[int] = None, time_filter: Optional
         })
 
     logger.info(f"Tavily returned {len(results)} results")
+    return results
+
+
+# ── Exa ──
+
+def exa_search(query: str, count: Optional[int] = None, time_filter: Optional[str] = None) -> List[dict]:
+    """Search using the Exa API (https://exa.ai). Requires exa_api_key or EXA_API_KEY.
+
+    Uses the auto search type (Exa picks neural vs keyword) and requests text
+    highlights as snippets. Plain REST over the shared httpx — no SDK.
+    """
+    count = count if count is not None else _get_result_count()
+    api_key = _get_provider_key("exa") or os.environ.get("EXA_API_KEY", "")
+    if not api_key:
+        logger.warning("Exa: no API key configured")
+        return []
+
+    payload = {
+        "query": query,
+        "numResults": count,
+        "type": "auto",
+        "contents": {"text": {"maxCharacters": 1000}},
+    }
+    if time_filter:
+        from datetime import datetime, timedelta, timezone
+
+        days = {"day": 1, "week": 7, "month": 30, "year": 365}.get(time_filter)
+        if days:
+            start = datetime.now(timezone.utc) - timedelta(days=days)
+            payload["startPublishedDate"] = start.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+    try:
+        response = httpx.post(
+            "https://api.exa.ai/search",
+            json=payload,
+            headers={"x-api-key": api_key, "Content-Type": "application/json"},
+            timeout=REQUEST_TIMEOUT,
+        )
+        if response.status_code == 429:
+            raise RateLimitError("Exa rate limit hit")
+        response.raise_for_status()
+    except httpx.RequestError as e:
+        error_logger.error(f"Exa search failed: {e}")
+        return []
+    except RateLimitError as e:
+        error_logger.error(str(e))
+        return []
+
+    try:
+        data = response.json()
+    except json.JSONDecodeError as e:
+        error_logger.error(f"Exa returned invalid JSON: {e}")
+        return []
+
+    results = []
+    for item in data.get("results", [])[:count]:
+        url = item.get("url", "")
+        if not url:
+            continue
+        text = item.get("text", "") or ""
+        results.append({
+            "title": item.get("title", "") or url,
+            "url": url,
+            "snippet": text[:500],
+            "age": item.get("publishedDate", ""),
+        })
+
+    logger.info(f"Exa returned {len(results)} results")
     return results
 
 

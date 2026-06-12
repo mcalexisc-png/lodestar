@@ -145,19 +145,22 @@ def select_embedding_provider(settings: dict, lite: bool):
         return None
 
 
+#: Lite-mode preference order among key-based API providers. First one with a
+#: configured key wins; otherwise lite falls back to keyless DuckDuckGo. Never
+#: SearXNG by default in lite (it needs a running container).
+_LITE_API_PROVIDER_ORDER = ("brave", "tavily", "exa")
+
+
 def select_search_provider(settings: dict, lite: bool) -> str:
     """Return the search provider name to use as the *primary* provider.
-
-    Not yet called from ``services/search/core.py`` (Step 1 placeholder).
-    Today, both modes use ``settings.get("search_provider", "searxng")``
-    directly with no lite-specific branch. Step 4 wires this in and changes
-    that: full mode keeps the ``"searxng"`` default; lite mode prefers the
-    first API provider with a configured key (brave/tavily/exa), falling back
-    to keyless ``"duckduckgo"`` — never SearXNG by default in lite.
 
     - If the admin has explicitly set ``search_provider`` to something other
       than the default ``"searxng"``, honor it unconditionally (explicit
       configuration always wins over the lite/full default).
+    - Full mode keeps the documented ``"searxng"`` default.
+    - Lite mode prefers the first API provider with a configured key
+      (brave → tavily → exa), falling back to keyless ``"duckduckgo"`` — so it
+      never depends on the SearXNG container.
     """
     configured = settings.get("search_provider", "searxng")
     if configured != "searxng":
@@ -166,6 +169,12 @@ def select_search_provider(settings: dict, lite: bool) -> str:
     if not lite:
         return "searxng"
 
-    # Step 4 will replace this with key-aware selection across
-    # brave/tavily/exa, falling back to duckduckgo.
+    try:
+        from services.search.providers import _get_provider_key
+
+        for provider in _LITE_API_PROVIDER_ORDER:
+            if _get_provider_key(provider):
+                return provider
+    except Exception as e:
+        logger.warning("lite search provider key probe failed (%s); using duckduckgo", e)
     return "duckduckgo"
