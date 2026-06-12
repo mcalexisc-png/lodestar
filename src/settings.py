@@ -172,6 +172,10 @@ DEFAULT_SETTINGS = {
         "admin_panel": "ctrl+shift+u",
         "cancel": "escape",
     },
+    # First-run hardware wizard (services/hwfit). True once shown/dismissed —
+    # gates the one-time modal, not re-shown unless the admin clicks
+    # "Re-run hardware wizard" in Settings > System.
+    "hardware_wizard_completed": False,
 }
 
 DEFAULT_FEATURES = {

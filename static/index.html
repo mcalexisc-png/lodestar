@@ -1294,6 +1294,40 @@
     </div>
   </div>
 
+  <!-- First-run hardware wizard -->
+  <div id="hwfit-wizard-modal" class="modal hidden">
+    <div class="modal-content" role="dialog" aria-label="Hardware setup" style="width: min(520px, 92vw);">
+      <div class="modal-header">
+        <h4>Hardware check</h4>
+        <button class="close-btn" id="hwfit-wizard-close" aria-label="Close hardware wizard">✖</button>
+      </div>
+      <div class="modal-body">
+        <div id="hwfit-wizard-loading" style="padding:24px 0;text-align:center;opacity:0.7;">
+          Detecting your hardware…
+        </div>
+        <div id="hwfit-wizard-result" class="hidden">
+          <div id="hwfit-wizard-specs" style="font-size:13px;opacity:0.75;margin-bottom:10px;"></div>
+          <div id="hwfit-wizard-recommendation" class="admin-card" style="margin:0 0 12px;"></div>
+          <div id="hwfit-wizard-provider" class="hidden" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;">
+            <span id="hwfit-wizard-provider-logo" style="width:20px;height:20px;flex:none;"></span>
+            <div style="flex:1;min-width:0;">
+              <div style="font-weight:600;font-size:13px;" id="hwfit-wizard-provider-name"></div>
+              <div style="font-size:11px;opacity:0.6;" id="hwfit-wizard-provider-url"></div>
+            </div>
+            <button class="admin-btn-add" id="hwfit-wizard-provider-btn">Add in Settings</button>
+          </div>
+          <div id="hwfit-wizard-apply" class="hidden" style="font-size:12px;opacity:0.7;margin-bottom:12px;"></div>
+        </div>
+        <div id="hwfit-wizard-error" class="hidden" style="padding:16px 0;opacity:0.7;font-size:13px;">
+          Couldn't detect hardware. You can run this check again later from Settings &gt; System.
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;">
+          <button id="hwfit-wizard-dismiss" style="padding:6px 12px;">Got it</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 
   <!-- Cookbook Modal -->
   <div id="cookbook-modal" class="modal hidden">
@@ -2221,6 +2255,11 @@
         <div data-settings-panel="system" class="hidden">
 
           <div class="admin-card">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v2M15 1v2M9 21v2M15 21v2M1 9h2M1 15h2M21 9h2M21 15h2"/></svg>Hardware</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">Re-run the hardware check that recommends lite vs full mode and a fast-cloud provider for your machine.</div>
+            <button class="admin-btn-add" id="hwfit-wizard-rerun">Re-run hardware wizard</button>
+          </div>
+          <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Data Backup</h2>
             <div class="admin-toggle-sub" style="margin-bottom:8px">Export or import your user data (memories, presets, settings, skills, preferences) as a JSON file.</div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -2352,6 +2391,7 @@
 <script type="module" src="/static/js/censor.js"></script>
 <script type="module" src="/static/js/settings.js"></script>
 <script type="module" src="/static/js/admin.js"></script>
+<script type="module" src="/static/js/hwfit_wizard.js"></script>
 <script type="module" src="/static/js/assistant.js"></script>
 <script type="module" src="/static/app.js"></script>  <!-- app.js must be LAST -->
 <script type="module" src="/static/js/init.js"></script>

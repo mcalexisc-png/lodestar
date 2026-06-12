@@ -1,8 +1,9 @@
 import re
 from copy import deepcopy
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
+from core.middleware import require_admin
 from routes._validators import validate_remote_host, validate_ssh_port
 
 
@@ -107,6 +108,13 @@ def _apply_manual_hardware(system, manual_mode="", manual_gpu_count="", manual_v
     return system
 
 
+# RAM threshold (GB) below which the first-run wizard recommends lite mode +
+# a fast-cloud provider preset over local model serving. Matches the
+# LODESTAR_LITE low-end-hardware target (see src/constants.py): below this,
+# local inference is generally too slow/cramped to be the default experience.
+_LOW_RAM_THRESHOLD_GB = 8
+
+
 def setup_hwfit_routes():
     router = APIRouter(prefix="/api/hwfit", tags=["hwfit"])
 
@@ -117,6 +125,78 @@ def setup_hwfit_routes():
         from services.hwfit.hardware import detect_system
         host, ssh_port = _validate_detection_target(host, ssh_port)
         return detect_system(host=host, ssh_port=ssh_port, platform=platform, fresh=fresh)
+
+    @router.get("/wizard-status")
+    def get_wizard_status():
+        """Whether the first-run hardware wizard has already run. The frontend
+        shows the wizard modal once when this is false, then marks it
+        completed (or re-shows it via Settings > System > "Re-run hardware
+        wizard", which calls the POST below with completed=false first)."""
+        from src.settings import get_setting
+        return {"completed": bool(get_setting("hardware_wizard_completed", False))}
+
+    @router.post("/wizard-status")
+    def set_wizard_status(request: Request, body: dict):
+        """Persist whether the hardware wizard has been shown/dismissed.
+        Admin-only: this is an install-wide setting, not per-user."""
+        require_admin(request)
+        from src.settings import load_settings, save_settings
+        settings = load_settings()
+        settings["hardware_wizard_completed"] = bool(body.get("completed"))
+        save_settings(settings)
+        return {"ok": True}
+
+    @router.get("/recommendation")
+    def get_recommendation(host: str = "", ssh_port: str = "", platform: str = "", fresh: bool = False):
+        """Detect hardware and recommend lite vs full mode + a fast-cloud
+        provider preset for low-end machines. Advisory only — LODESTAR_LITE is
+        read once at process start from the environment, so this never changes
+        the running mode; it tells the admin how to apply the recommendation
+        (.env + restart, or install-lite.sh/.ps1)."""
+        from services.hwfit.hardware import detect_system
+        host, ssh_port = _validate_detection_target(host, ssh_port)
+        system = detect_system(host=host, ssh_port=ssh_port, platform=platform, fresh=fresh)
+        if system.get("error"):
+            return {"system": system, "error": system["error"]}
+
+        ram_gb = system.get("total_ram_gb") or 0
+        has_gpu = bool(system.get("has_gpu"))
+        low_end = ram_gb < _LOW_RAM_THRESHOLD_GB and not has_gpu
+
+        if low_end:
+            return {
+                "system": system,
+                "recommend_mode": "lite",
+                "reason": (
+                    f"{ram_gb} GB RAM and no GPU detected. Lite mode skips the "
+                    "ChromaDB/vector-search stack (keyword search instead), "
+                    "skips the Playwright/browser tool, and uses smaller "
+                    "SQLite caches — local model serving would otherwise be "
+                    "slow on this hardware, so an API provider is recommended."
+                ),
+                "recommend_provider": {
+                    "name": "Groq",
+                    "base_url": "https://api.groq.com/openai/v1",
+                    "logo": "groq",
+                },
+                "apply_lite": (
+                    "Run ./install-lite.sh (or install-lite.ps1 on Windows), "
+                    "or set LODESTAR_LITE=true in .env and restart."
+                ),
+            }
+
+        return {
+            "system": system,
+            "recommend_mode": "full",
+            "reason": (
+                f"{ram_gb} GB RAM"
+                + (f" with a {system.get('gpu_name')} GPU" if has_gpu else " and no GPU")
+                + " — full mode (the default) is recommended. You can still "
+                "add a fast-cloud provider for speed; see Settings > AI."
+            ),
+            "recommend_provider": None,
+            "apply_lite": None,
+        }
 
     @router.get("/models")
     def get_models(use_case: str = "", sort: str = "score", limit: int = 50, search: str = "", host: str = "", quant: str = "", ctx: str = "", gpu_count: str = "", gpu_group: str = "", ssh_port: str = "", platform: str = "", fresh: bool = False, manual_mode: str = "", manual_gpu_count: str = "", manual_vram_gb: str = "", manual_ram_gb: str = "", manual_backend: str = "", ignore_detected_gpu: bool = False, ignore_detected_ram: bool = False, fit_only: bool = False):
