@@ -11,6 +11,19 @@ requires-python = ">=3.11"
 # the example works either way.
 [project.entry-points."lodestar.tools"]
 text_stats = "plugins.lodestar_textstats:manifest"
+file_search = "plugins.lodestar_filesearch:manifest"
+csv_read = "plugins.lodestar_csv:manifest"
+datetime_tool = "plugins.lodestar_datetime:manifest"
+git_tool = "plugins.lodestar_git:manifest"
+sqlite_query = "plugins.lodestar_sqlquery:manifest"
+rss_read = "plugins.lodestar_rss:manifest"
+
+# Optional extras group for lightweight agent tools that need a small extra
+# dependency. NOT installed by default (keeps lite/core lean). The RSS reader
+# plugin lazy-imports feedparser and degrades to a clear "install to use"
+# message when it's absent.
+[project.optional-dependencies]
+tools = ["feedparser"]
 
 [tool.ruff]
 line-length = 120

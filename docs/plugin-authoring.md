@@ -99,6 +99,26 @@ Keep heavy imports **inside** the handler so discovery stays cheap.
 (text statistics). Its `manifest()` is read at startup; its `run()` is imported
 only when the `text_stats` tool is first called.
 
+### Bundled lightweight tools
+
+Several bundled plugins ship as real, useful tools (and demonstrate each
+capability):
+
+| Tool            | Backed by                         | Capabilities |
+|-----------------|-----------------------------------|--------------|
+| `file_search`   | `ripgrep` (stdlib fallback)       | fs, shell    |
+| `csv_read`      | stdlib `csv`                      | fs           |
+| `datetime_tool` | stdlib `zoneinfo`                 | (none)       |
+| `git_tool`      | shell-out to `git` (read-only)    | fs, shell    |
+| `sqlite_query`  | stdlib `sqlite3` (`mode=ro`, SELECT-only) | fs   |
+| `rss_read`      | `feedparser` (optional extra)     | net          |
+
+`file_search`, `git_tool`, `csv_read`, and `sqlite_query` confine paths to the
+host's tool path allowlist. `git_tool` rejects write subcommands; `sqlite_query`
+opens the DB read-only and accepts only a single SELECT/WITH. `rss_read`
+lazy-imports `feedparser` and degrades to an "install to use" message when the
+optional `tools` extra isn't installed.
+
 ### UI panels (optional, safe)
 
 A plugin may register a UI panel via `manifest.panel`. Two shapes only — there
