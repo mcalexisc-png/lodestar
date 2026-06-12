@@ -330,7 +330,7 @@ def _append_pip_install_runner_lines(runner_lines: list[str], cmd: str) -> None:
     runner_lines.append(f"if {help_check}; then")
     runner_lines.append(f"  {cmd}")
     runner_lines.append("else")
-    runner_lines.append('  echo "[odysseus] pip does not support --break-system-packages; installing without it."')
+    runner_lines.append('  echo "[lodestar] pip does not support --break-system-packages; installing without it."')
     runner_lines.append(f"  {without_break}")
     runner_lines.append("fi")
 
@@ -680,9 +680,9 @@ def _append_vllm_linux_preflight_lines(runner_lines: list[str]) -> None:
     runner_lines.append('  echo "ERROR: vLLM is not installed."')
     runner_lines.append('  LODESTAR_PREFLIGHT_EXIT=127')
     runner_lines.append('else')
-    runner_lines.append('  echo "[odysseus] vLLM CLI: $LODESTAR_VLLM_BIN"')
+    runner_lines.append('  echo "[lodestar] vLLM CLI: $LODESTAR_VLLM_BIN"')
     runner_lines.append('  LODESTAR_VLLM_VERSION="$("$LODESTAR_VLLM_BIN" --version 2>&1 | head -n 1 || true)"')
-    runner_lines.append('  if [ -n "$LODESTAR_VLLM_VERSION" ]; then echo "[odysseus] vLLM version: $LODESTAR_VLLM_VERSION"; fi')
+    runner_lines.append('  if [ -n "$LODESTAR_VLLM_VERSION" ]; then echo "[lodestar] vLLM version: $LODESTAR_VLLM_VERSION"; fi')
     runner_lines.append('fi')
 
 def _append_serve_exit_code_lines(
@@ -728,14 +728,14 @@ def _append_llama_cpp_linux_accel_build_lines(runner_lines: list[str]) -> None:
     runner_lines.append('        export HIPCXX="${HIPCXX:-$(hipconfig -l)/clang}"')
     runner_lines.append('        export HIP_PATH="${HIP_PATH:-$(hipconfig -R)}"')
     runner_lines.append('      fi')
-    runner_lines.append('      echo "[odysseus] ROCm/HIP detected — building llama-server with HIP support..."')
+    runner_lines.append('      echo "[lodestar] ROCm/HIP detected — building llama-server with HIP support..."')
     runner_lines.append('      cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_HIP=ON && cmake --build build -j"$NPROC" --target llama-server && ln -sf ~/llama.cpp/build/bin/llama-server ~/bin/llama-server')
     runner_lines.append('    elif command -v nvcc &>/dev/null; then')
     # nvcc alone is not sufficient — pip-installed CUDA wheels or incomplete
     # tooling can expose nvcc without shipping libcudart, causing cmake to fail
     # mid-build with "CUDA runtime library not found". Check cudart explicitly
     # via a small helper so the guard stays readable.
-    runner_lines.append('      _odysseus_has_cudart() {')
+    runner_lines.append('      _lodestar_has_cudart() {')
     runner_lines.append('        ldconfig -p 2>/dev/null | grep -q \'libcudart\\.so\' && return 0')
     runner_lines.append('        local _cuh="${CUDA_HOME:-/usr/local/cuda}"')
     runner_lines.append('        ls "$_cuh/lib64/libcudart.so"* &>/dev/null && return 0')
@@ -745,19 +745,19 @@ def _append_llama_cpp_linux_accel_build_lines(runner_lines: list[str]) -> None:
     runner_lines.append('        ls "${_cuh%/cuda_nvcc}/cuda_runtime/lib/libcudart.so"* &>/dev/null && return 0')
     runner_lines.append('        return 1')
     runner_lines.append('      }')
-    runner_lines.append('      if _odysseus_has_cudart; then')
-    runner_lines.append('        echo "[odysseus] CUDA nvcc + cudart found — building llama-server with CUDA (GPU) support..."')
+    runner_lines.append('      if _lodestar_has_cudart; then')
+    runner_lines.append('        echo "[lodestar] CUDA nvcc + cudart found — building llama-server with CUDA (GPU) support..."')
     runner_lines.append('        cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON && cmake --build build -j"$NPROC" --target llama-server && ln -sf ~/llama.cpp/build/bin/llama-server ~/bin/llama-server')
     runner_lines.append('      else')
-    runner_lines.append('        echo "[odysseus] WARNING: nvcc found but CUDA runtime (libcudart.so) is not visible — building llama-server for CPU only."')
-    runner_lines.append('        echo "[odysseus]   GPU inference will not be available for this llama.cpp build."')
-    runner_lines.append('        echo "[odysseus]   Ensure libcudart is installed (e.g. cuda-runtime package) and visible via ldconfig or CUDA_HOME."')
+    runner_lines.append('        echo "[lodestar] WARNING: nvcc found but CUDA runtime (libcudart.so) is not visible — building llama-server for CPU only."')
+    runner_lines.append('        echo "[lodestar]   GPU inference will not be available for this llama.cpp build."')
+    runner_lines.append('        echo "[lodestar]   Ensure libcudart is installed (e.g. cuda-runtime package) and visible via ldconfig or CUDA_HOME."')
     runner_lines.append('        cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j"$NPROC" --target llama-server && ln -sf ~/llama.cpp/build/bin/llama-server ~/bin/llama-server')
     runner_lines.append('      fi')
     runner_lines.append('    else')
-    runner_lines.append('      echo "[odysseus] WARNING: no HIP/CUDA toolchain found — building llama-server for CPU only."')
-    runner_lines.append('      echo "[odysseus]   GPU inference will not be available for this llama.cpp build."')
-    runner_lines.append('      echo "[odysseus]   Install ROCm for AMD GPUs or vLLM/CUDA tooling for NVIDIA, then re-launch this serve task."')
+    runner_lines.append('      echo "[lodestar] WARNING: no HIP/CUDA toolchain found — building llama-server for CPU only."')
+    runner_lines.append('      echo "[lodestar]   GPU inference will not be available for this llama.cpp build."')
+    runner_lines.append('      echo "[lodestar]   Install ROCm for AMD GPUs or vLLM/CUDA tooling for NVIDIA, then re-launch this serve task."')
     runner_lines.append('      cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j"$NPROC" --target llama-server && ln -sf ~/llama.cpp/build/bin/llama-server ~/bin/llama-server')
     runner_lines.append('    fi')
 
@@ -776,7 +776,7 @@ def _llama_cpp_rebuild_cmd() -> str:
         'mkdir -p "$HOME/bin" && '
         'rm -f "$HOME/bin/llama-server" && '
         'rm -rf "$HOME/llama.cpp/build" && '
-        'echo "[odysseus] Cleared the cached llama.cpp build. '
+        'echo "[lodestar] Cleared the cached llama.cpp build. '
         'Re-launch the serve task to rebuild llama-server from source '
         '(CUDA or HIP will be used if a toolchain is now available)."'
     )

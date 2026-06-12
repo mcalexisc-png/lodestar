@@ -700,7 +700,7 @@ function _libCacheWriteBack() {
 // Expose the active account id to other modules (document.js uses this when sending).
 // Simple global rather than cross-module import to keep coupling minimal.
 function _publishActiveAccount() {
-  try { window.__odysseusActiveEmailAccount = state._libAccountId || null; } catch (_) {}
+  try { window.__lodestarActiveEmailAccount = state._libAccountId || null; } catch (_) {}
   // Publish the active account's own address so reply-all can exclude us from
   // the recipient list. This global was read in emailInbox.js but never set.
   try {
@@ -986,7 +986,7 @@ export function openEmailLibrary(opts = {}) {
     });
     if (!ok) return;
     try {
-      const res = await fetch(`${API_BASE}/api/email/odysseus/reminders?permanent=1${_acct()}`, {
+      const res = await fetch(`${API_BASE}/api/email/lodestar/reminders?permanent=1${_acct()}`, {
         method: 'DELETE',
         credentials: 'same-origin',
       });

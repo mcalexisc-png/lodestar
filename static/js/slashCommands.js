@@ -5102,7 +5102,7 @@ async function _cmdSetup(args, ctx) {
         return true;
       }
 
-      const current = (Storage.getJSON(Storage.KEYS.THEME, null) || Storage.getJSON('odysseus-theme', {})).name || 'dark';
+      const current = (Storage.getJSON(Storage.KEYS.THEME, {})).name || 'dark';
       const customLabel = customKeys.length ? `\n\nCustom: ${customKeys.join(', ')}` : '';
       await typewriterReply(`Current theme: ${current}\n\nAvailable: ${presets.join(', ')}${customLabel}\n\nType a theme name to switch.`);
       setupMode = 'theme';
@@ -5463,7 +5463,7 @@ async function _cmdWisdom(args, ctx) {
 
 async function _cmdUptime(args, ctx) {
   const now = Date.now();
-  const loaded = window._odysseusLoadTime || now;
+  const loaded = window._lodestarLoadTime || now;
   const diff = now - loaded;
   const h = Math.floor(diff / 3600000);
   const m = Math.floor((diff % 3600000) / 60000);

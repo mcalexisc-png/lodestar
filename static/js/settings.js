@@ -1661,7 +1661,7 @@ function initAppearance() {
     chk.addEventListener('change', function() {
       if (chk.dataset.privacyKey !== 'sensitive-blur') return;
       localStorage.setItem('odysseus-sensitive-blur', chk.checked ? 'on' : 'off');
-      window.dispatchEvent(new CustomEvent('odysseus-sensitive-blur-change', {
+      window.dispatchEvent(new CustomEvent('lodestar-sensitive-blur-change', {
         detail: { enabled: chk.checked }
       }));
     });
@@ -1979,7 +1979,7 @@ async function initShortcuts() {
         body: JSON.stringify({ keybinds }),
       });
       // Update global keybinds so they take effect immediately
-      window._odysseusKeybinds = keybinds;
+      window._lodestarKeybinds = keybinds;
       if (uiModule && uiModule.showToast) uiModule.showToast('Shortcut saved');
     } catch (e) {
       console.error('Failed to save keybinds:', e);
@@ -2207,7 +2207,7 @@ function initAll() {
 
 function notifyIntegrationsChanged() {
   try {
-    window.dispatchEvent(new CustomEvent('odysseus-integrations-changed'));
+    window.dispatchEvent(new CustomEvent('lodestar-integrations-changed'));
   } catch (_) {}
 }
 
@@ -2444,7 +2444,7 @@ async function initReminderSettings() {
   applyReminderChannelAvailability();
   if (!channelSel.dataset.integrationRefreshWired) {
     channelSel.dataset.integrationRefreshWired = '1';
-    window.addEventListener('odysseus-integrations-changed', () => {
+    window.addEventListener('lodestar-integrations-changed', () => {
       refreshReminderChannelAvailability().catch(e => console.warn('Failed to refresh reminder channels', e));
     });
   }

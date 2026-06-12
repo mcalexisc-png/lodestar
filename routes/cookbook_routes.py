@@ -46,9 +46,9 @@ from routes.cookbook_helpers import (
 
 _HF_TOKEN_STATUS_SNIPPET = (
     'if [ -n "$HF_TOKEN" ]; then '
-    'echo "[odysseus] HF token: applied"; '
+    'echo "[lodestar] HF token: applied"; '
     'else '
-    'echo "[odysseus] HF token: NOT SET — gated/private models will be denied. '
+    'echo "[lodestar] HF token: NOT SET — gated/private models will be denied. '
     'Add one in Lodestar Settings -> Cookbook -> HuggingFace Token."; '
     'fi'
 )
@@ -1064,7 +1064,7 @@ def setup_cookbook_routes() -> APIRouter:
             port = 8080  # llama.cpp's llama-server default — the Apple Silicon path
 
         # Determine host. The cookbook tmux for `local=true` serves runs INSIDE
-        # the odysseus container — so the right URL for the in-container
+        # the lodestar container — so the right URL for the in-container
         # backend to reach it is `localhost`, NOT `host.docker.internal`
         # (the latter points at the docker HOST, which doesn't have a server
         # on that port). The previous host.docker.internal fallback only made
@@ -1450,8 +1450,8 @@ def setup_cookbook_routes() -> APIRouter:
                 runner_lines.append('fi')
                 runner_lines.append('LODESTAR_OLLAMA_URL="http://${LODESTAR_OLLAMA_HOST}:${LODESTAR_OLLAMA_PORT}"')
                 if remote and _ollama_host in ("0.0.0.0", "::"):
-                    runner_lines.append('echo "[odysseus] WARNING: remote Ollama will bind to ${LODESTAR_OLLAMA_HOST}:${LODESTAR_OLLAMA_PORT} so Odysseus can reach it from this host."')
-                    runner_lines.append('echo "[odysseus] Ollama has no built-in authentication; expose this only on a trusted LAN/VPN or provide an explicit OLLAMA_HOST with your own access controls."')
+                    runner_lines.append('echo "[lodestar] WARNING: remote Ollama will bind to ${LODESTAR_OLLAMA_HOST}:${LODESTAR_OLLAMA_PORT} so Odysseus can reach it from this host."')
+                    runner_lines.append('echo "[lodestar] Ollama has no built-in authentication; expose this only on a trusted LAN/VPN or provide an explicit OLLAMA_HOST with your own access controls."')
                 runner_lines.append('echo "Starting ollama server on ${LODESTAR_OLLAMA_HOST}:${LODESTAR_OLLAMA_PORT}..."')
                 runner_lines.append('OLLAMA_HOST="${LODESTAR_OLLAMA_HOST}:${LODESTAR_OLLAMA_PORT}" ollama serve')
                 runner_lines.append('_los_exit=$?')
@@ -1503,7 +1503,7 @@ def setup_cookbook_routes() -> APIRouter:
                 runner_lines.append('echo')
                 runner_lines.append('echo "=== Process exited with code ${_los_exit} ==="')
                 runner_lines.append('if [ "$_los_exit" -eq 0 ]; then')
-                runner_lines.append('  echo "[odysseus] Ollama sidecar model is available; keeping Cookbook task attached to the persistent Ollama daemon."')
+                runner_lines.append('  echo "[lodestar] Ollama sidecar model is available; keeping Cookbook task attached to the persistent Ollama daemon."')
                 runner_lines.append('  while true; do sleep 3600; done')
                 runner_lines.append('fi')
                 runner_lines.append('exec bash -i')

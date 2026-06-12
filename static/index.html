@@ -14,7 +14,7 @@
   <meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <script nonce="{{CSP_NONCE}}">
-  window._odysseusLoadTime = Date.now();
+  window._lodestarLoadTime = Date.now();
   (function(){
     try {
       var t = JSON.parse(localStorage.getItem('lodestar-theme') || localStorage.getItem('odysseus-theme'));
@@ -209,7 +209,7 @@
       if (k) k.addEventListener('load', function(){ k.media = 'all'; }, { once: true });
       var m = document.getElementById('mermaid-script');
       if (m) m.addEventListener('load', function(){
-        if (window.odysseusInitMermaid) window.odysseusInitMermaid();
+        if (window.lodestarInitMermaid) window.lodestarInitMermaid();
       }, { once: true });
     })();
   </script>
