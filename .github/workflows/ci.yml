@@ -46,6 +46,24 @@ jobs:
             node --check "$f"
           done
 
+  lint-and-typecheck:
+    name: Lint & typecheck (ruff, mypy)
+    runs-on: ubuntu-latest
+    # Informational for now: the codebase has pre-existing findings under
+    # both tools that predate this job. Make required once triaged.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install ruff mypy
+      - run: ruff check .
+      - run: mypy app.py core routes src services scripts
+
   python-tests:
     name: Python tests (pytest)
     runs-on: ubuntu-latest

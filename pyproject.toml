@@ -4,6 +4,26 @@ version = "0.1.0-dev"
 description = "Self-hosted AI for everyone -- your own private workspace, guided by your own star, running on the hardware you already have."
 requires-python = ">=3.11"
 
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+# Start small: undefined names and unused imports/variables. The codebase
+# has pre-existing findings under this set (see CI's lint job, which is
+# informational for now) — expand the rule set only after those are
+# triaged, to avoid a wall of unrelated noise on unrelated PRs.
+select = ["F"]
+
+[tool.mypy]
+python_version = "3.11"
+# Informational only for now (see CI's typecheck job): the codebase predates
+# type annotations in most modules. Enable incrementally per-module via
+# `[[tool.mypy.overrides]]` as files are annotated, rather than fighting the
+# whole tree at once.
+ignore_missing_imports = true
+check_untyped_defs = false
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
