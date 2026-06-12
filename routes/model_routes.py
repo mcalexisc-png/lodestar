@@ -1494,7 +1494,7 @@ def setup_model_routes(model_discovery):
     def discover_local(request: Request):
         """Scan local network for model servers on common ports."""
         require_admin(request)
-        return model_discovery.discover_models()
+        return model_discovery.discover_models(fresh=True)
 
     # ---- Admin: model endpoints CRUD ----
 
