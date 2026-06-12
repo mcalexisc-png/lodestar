@@ -2,16 +2,18 @@
 """Application-wide constants and configuration values."""
 import os
 
+from src.env_compat import getenv as _getenv_compat
+
 APP_VERSION = "0.1.0-dev"
 
 # Base paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/"
 STATIC_DIR = os.path.join(BASE_DIR, "static")
-DATA_DIR = os.getenv("ODYSSEUS_DATA_DIR", os.path.join(BASE_DIR, "data"))
+DATA_DIR = _getenv_compat("LODESTAR_DATA_DIR", "ODYSSEUS_DATA_DIR") or os.path.join(BASE_DIR, "data")
 
 # Data file paths
 # Single source of truth: every persisted file/dir lives under DATA_DIR, which
-# is the ONLY place ODYSSEUS_DATA_DIR is read. Import these constants instead of
+# is the ONLY place LODESTAR_DATA_DIR is read. Import these constants instead of
 # re-deriving paths from __file__ or a relative "data" literal.
 SESSIONS_FILE = os.path.join(DATA_DIR, "sessions.json")
 MEMORY_FILE = os.path.join(DATA_DIR, "memory.json")
@@ -54,7 +56,7 @@ GALLERY_UPLOADS_DIR = os.path.join(DATA_DIR, "gallery_uploads")
 MEMORY_VECTORS_DIR = os.path.join(DATA_DIR, "memory_vectors")
 
 # Paths with an intentional dedicated env override, defaulting under DATA_DIR.
-MAIL_ATTACHMENTS_DIR = os.getenv("ODYSSEUS_MAIL_ATTACHMENTS_DIR", os.path.join(DATA_DIR, "mail-attachments"))
+MAIL_ATTACHMENTS_DIR = _getenv_compat("LODESTAR_MAIL_ATTACHMENTS_DIR", "ODYSSEUS_MAIL_ATTACHMENTS_DIR") or os.path.join(DATA_DIR, "mail-attachments")
 FASTEMBED_CACHE_DIR = os.getenv("FASTEMBED_CACHE_PATH", os.path.join(DATA_DIR, "fastembed_cache"))
 
 # Agent tool output limits (single source of truth — imported by tool_execution.py,
@@ -97,7 +99,7 @@ def internal_api_base() -> str:
     call. Without this, loopback tools fail with "All connection attempts
     failed" whenever the server is not on port 7000.
     """
-    override = os.environ.get("ODYSSEUS_INTERNAL_BASE")
+    override = _getenv_compat("LODESTAR_INTERNAL_BASE", "ODYSSEUS_INTERNAL_BASE")
     if override:
         return override.rstrip("/")
     return f"http://127.0.0.1:{os.environ.get('APP_PORT', '7000')}"

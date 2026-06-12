@@ -358,10 +358,10 @@ def test_vllm_preflight_reports_cli_and_version():
     script = "\n".join(lines)
 
     assert 'export PATH="$HOME/.local/bin:$PATH"' in script
-    assert 'ODYSSEUS_VLLM_BIN="$(command -v vllm 2>/dev/null || true)"' in script
-    assert 'echo "[odysseus] vLLM CLI: $ODYSSEUS_VLLM_BIN"' in script
-    assert '"$ODYSSEUS_VLLM_BIN" --version' in script
-    assert 'ODYSSEUS_PREFLIGHT_EXIT=127' in script
+    assert 'LODESTAR_VLLM_BIN="$(command -v vllm 2>/dev/null || true)"' in script
+    assert 'echo "[odysseus] vLLM CLI: $LODESTAR_VLLM_BIN"' in script
+    assert '"$LODESTAR_VLLM_BIN" --version' in script
+    assert 'LODESTAR_PREFLIGHT_EXIT=127' in script
 
 
 def test_venv_safe_local_pip_install_strips_user_flags_only_for_local_venv():
@@ -477,16 +477,16 @@ def test_serve_preflight_failure_keeps_tmux_pane_visible():
     capture the helpful error, leaving users with a blank "crashed" card.
     """
     runner_lines = [
-        'ODYSSEUS_PREFLIGHT_EXIT=""',
+        'LODESTAR_PREFLIGHT_EXIT=""',
         'echo "ERROR: vLLM is not installed. Open Cookbook -> Dependencies and install vllm on this server, then launch again."',
-        'ODYSSEUS_PREFLIGHT_EXIT=127',
+        'LODESTAR_PREFLIGHT_EXIT=127',
     ]
     _append_serve_preflight_exit_lines(runner_lines, keep_shell_open=True)
     script = "\n".join(runner_lines)
 
     assert "ERROR: vLLM is not installed" in script
-    assert 'ODYSSEUS_PREFLIGHT_EXIT=127' in script
-    assert 'echo "=== Process exited with code $ODYSSEUS_PREFLIGHT_EXIT ==="' in script
+    assert 'LODESTAR_PREFLIGHT_EXIT=127' in script
+    assert 'echo "=== Process exited with code $LODESTAR_PREFLIGHT_EXIT ==="' in script
     assert 'exec "${SHELL:-/bin/bash}"' in script
     assert "exit 127" not in script
 
@@ -497,8 +497,8 @@ def test_serve_runner_preserves_command_exit_code():
     _append_serve_exit_code_lines(runner_lines, keep_shell_open=True)
     script = "\n".join(runner_lines)
 
-    assert "ODYSSEUS_CMD_EXIT=$?" in script
-    assert 'echo "=== Process exited with code $ODYSSEUS_CMD_EXIT ==="' in script
+    assert "LODESTAR_CMD_EXIT=$?" in script
+    assert 'echo "=== Process exited with code $LODESTAR_CMD_EXIT ==="' in script
     assert 'echo "=== Process exited with code $? ==="' not in script
 
 
@@ -510,7 +510,7 @@ def test_pip_serve_runner_emits_download_ok_before_exit_marker():
 
     assert 'echo "DOWNLOAD_OK"' in script
     assert script.index('echo "DOWNLOAD_OK"') < script.index("=== Process exited with code")
-    assert 'exit "$ODYSSEUS_CMD_EXIT"' in script
+    assert 'exit "$LODESTAR_CMD_EXIT"' in script
 
 
 def test_validate_serve_cmd_accepts_vllm_kv_cache_dtype():

@@ -1090,13 +1090,13 @@ _poller_task = None
 _summarize_task = None
 
 def _inprocess_pollers_enabled() -> bool:
-    """Honour `ODYSSEUS_INPROCESS_POLLERS` — set to `0`/`false`/`no`/`off`
+    """Honour `LODESTAR_INPROCESS_POLLERS` — set to `0`/`false`/`no`/`off`
     to disable the asyncio tasks so a cron / systemd-timer setup driving
-    `odysseus-mail poll-scheduled` is the sole external driver. The legacy
+    `lodestar-mail poll-scheduled` is the sole external driver. The legacy
     auto-summary/reply poller no longer starts here; scheduled Tasks own that
     work so Email settings are only feature gates, not a second scheduler."""
-    import os
-    raw = os.environ.get("ODYSSEUS_INPROCESS_POLLERS", "1").strip().lower()
+    from src.env_compat import getenv as _getenv_compat
+    raw = (_getenv_compat("LODESTAR_INPROCESS_POLLERS", "ODYSSEUS_INPROCESS_POLLERS", "1") or "1").strip().lower()
     return raw not in ("0", "false", "no", "off", "")
 
 
@@ -1104,13 +1104,13 @@ def _start_poller():
     """Start background pollers. Called at module load; if no event loop is
     running yet (common at import time), defer via a first-request hook.
 
-    Skipped entirely when `ODYSSEUS_INPROCESS_POLLERS=0` — use that when
+    Skipped entirely when `LODESTAR_INPROCESS_POLLERS=0` — use that when
     you're driving polling from cron / systemd to avoid two copies of
     `_scheduled_poll_once` racing on the same SQLite."""
     if not _inprocess_pollers_enabled():
         logger.info(
-            "In-process email pollers disabled (ODYSSEUS_INPROCESS_POLLERS=0); "
-            "drive `odysseus-mail poll-scheduled` externally."
+            "In-process email pollers disabled (LODESTAR_INPROCESS_POLLERS=0); "
+            "drive `lodestar-mail poll-scheduled` externally."
         )
         return
     import asyncio

@@ -461,14 +461,14 @@ def setup_cookbook_routes() -> APIRouter:
         # Use `python3 -m pip` not `pip` — macOS has no bare `pip` command.
         if is_ollama_download:
             lines.append('if command -v ollama >/dev/null 2>&1; then')
-            lines.append(f'  ODYSSEUS_OLLAMA_PULL_CMD={shlex.quote(ollama_cmd)}')
+            lines.append(f'  LODESTAR_OLLAMA_PULL_CMD={shlex.quote(ollama_cmd)}')
             lines.append('elif command -v docker >/dev/null 2>&1; then')
-            lines.append('  ODYSSEUS_OLLAMA_CONTAINER="$(docker ps --format \'{{.Names}}\' 2>/dev/null | grep -E \'^(ollama-rocm|ollama-test)$\' | head -1)"')
-            lines.append('  if [ -n "$ODYSSEUS_OLLAMA_CONTAINER" ]; then')
-            lines.append(f'    ODYSSEUS_OLLAMA_PULL_CMD={shlex.quote("docker exec ${ODYSSEUS_OLLAMA_CONTAINER} " + ollama_cmd)}')
+            lines.append('  LODESTAR_OLLAMA_CONTAINER="$(docker ps --format \'{{.Names}}\' 2>/dev/null | grep -E \'^(ollama-rocm|ollama-test)$\' | head -1)"')
+            lines.append('  if [ -n "$LODESTAR_OLLAMA_CONTAINER" ]; then')
+            lines.append(f'    LODESTAR_OLLAMA_PULL_CMD={shlex.quote("docker exec ${LODESTAR_OLLAMA_CONTAINER} " + ollama_cmd)}')
             lines.append('  fi')
             lines.append('fi')
-            lines.append('if [ -z "$ODYSSEUS_OLLAMA_PULL_CMD" ]; then echo "ERROR: Ollama not found on this server. Install Ollama or start an ollama-rocm/ollama-test container."; exit 127; fi')
+            lines.append('if [ -z "$LODESTAR_OLLAMA_PULL_CMD" ]; then echo "ERROR: Ollama not found on this server. Install Ollama or start an ollama-rocm/ollama-test container."; exit 127; fi')
         else:
             lines.append(f"command -v hf >/dev/null 2>&1 || {_pip_install_fallback_chain('huggingface_hub', upgrade=True)}")
             if req.disable_hf_transfer:
@@ -592,14 +592,14 @@ def setup_cookbook_routes() -> APIRouter:
             # Use --break-system-packages on PEP-668 systems (Arch, newer Debian) so it doesn't bail.
             if is_ollama_download:
                 runner_lines.append('if command -v ollama >/dev/null 2>&1; then')
-                runner_lines.append(f'  ODYSSEUS_OLLAMA_PULL_CMD={shlex.quote(ollama_cmd)}')
+                runner_lines.append(f'  LODESTAR_OLLAMA_PULL_CMD={shlex.quote(ollama_cmd)}')
                 runner_lines.append('elif command -v docker >/dev/null 2>&1; then')
-                runner_lines.append('  ODYSSEUS_OLLAMA_CONTAINER="$(docker ps --format \'{{.Names}}\' 2>/dev/null | grep -E \'^(ollama-rocm|ollama-test)$\' | head -1)"')
-                runner_lines.append('  if [ -n "$ODYSSEUS_OLLAMA_CONTAINER" ]; then')
-                runner_lines.append(f'    ODYSSEUS_OLLAMA_PULL_CMD={shlex.quote("docker exec ${ODYSSEUS_OLLAMA_CONTAINER} " + ollama_cmd)}')
+                runner_lines.append('  LODESTAR_OLLAMA_CONTAINER="$(docker ps --format \'{{.Names}}\' 2>/dev/null | grep -E \'^(ollama-rocm|ollama-test)$\' | head -1)"')
+                runner_lines.append('  if [ -n "$LODESTAR_OLLAMA_CONTAINER" ]; then')
+                runner_lines.append(f'    LODESTAR_OLLAMA_PULL_CMD={shlex.quote("docker exec ${LODESTAR_OLLAMA_CONTAINER} " + ollama_cmd)}')
                 runner_lines.append('  fi')
                 runner_lines.append('fi')
-                runner_lines.append('if [ -z "$ODYSSEUS_OLLAMA_PULL_CMD" ]; then echo "ERROR: Ollama not found on this server. Install Ollama or start an ollama-rocm/ollama-test container."; exit 127; fi')
+                runner_lines.append('if [ -z "$LODESTAR_OLLAMA_PULL_CMD" ]; then echo "ERROR: Ollama not found on this server. Install Ollama or start an ollama-rocm/ollama-test container."; exit 127; fi')
             else:
                 runner_lines.append(f"command -v hf >/dev/null 2>&1 || {_pip_install_fallback_chain('huggingface_hub', python_cmd='pip', upgrade=True)}")
                 if req.disable_hf_transfer:
@@ -620,7 +620,7 @@ def setup_cookbook_routes() -> APIRouter:
             runner_lines.append('while [ $_attempt -lt $_max_retries ]; do')
             runner_lines.append('  _attempt=$((_attempt+1))')
             if is_ollama_download:
-                runner_lines.append('  eval "$ODYSSEUS_OLLAMA_PULL_CMD" < /dev/null')
+                runner_lines.append('  eval "$LODESTAR_OLLAMA_PULL_CMD" < /dev/null')
             else:
                 runner_lines.append('  if command -v hf &>/dev/null; then')
                 runner_lines.append(f'    {hf_cmd} < /dev/null')
@@ -674,7 +674,7 @@ def setup_cookbook_routes() -> APIRouter:
             if not is_ollama_download:
                 lines.append(_HF_TOKEN_STATUS_SNIPPET)
             # Retry loop — same rationale as the remote-bash path. Issue #2722.
-            _hf_invoke = 'eval "$ODYSSEUS_OLLAMA_PULL_CMD" < /dev/null' if is_ollama_download else (hf_cmd if IS_WINDOWS else f"{hf_cmd} < /dev/null")
+            _hf_invoke = 'eval "$LODESTAR_OLLAMA_PULL_CMD" < /dev/null' if is_ollama_download else (hf_cmd if IS_WINDOWS else f"{hf_cmd} < /dev/null")
             lines.append('_max_retries=10; _attempt=0; _ec=0')
             lines.append('while [ $_attempt -lt $_max_retries ]; do')
             lines.append('  _attempt=$((_attempt+1))')
@@ -1351,7 +1351,7 @@ def setup_cookbook_routes() -> APIRouter:
                 f"exec > >(tee -a /tmp/odysseus-tmux/{session_id}.log) 2>&1"
             )
             runner_lines.extend(_user_shell_path_bootstrap())
-            runner_lines.append('ODYSSEUS_PREFLIGHT_EXIT=""')
+            runner_lines.append('LODESTAR_PREFLIGHT_EXIT=""')
             # Put Lodestar's own venv bin on PATH (local runs only) so the serve
             # shell resolves the bundled python3/hf, mirroring the download flow.
             if not remote:
@@ -1416,7 +1416,7 @@ def setup_cookbook_routes() -> APIRouter:
                 runner_lines.append('  fi')
                 runner_lines.append('  if ! command -v llama-server &>/dev/null && ! python3 -c "import llama_cpp" 2>/dev/null; then')
                 runner_lines.append('    echo "ERROR: llama.cpp serving is not available after install/build attempts."')
-                runner_lines.append('    ODYSSEUS_PREFLIGHT_EXIT=127')
+                runner_lines.append('    LODESTAR_PREFLIGHT_EXIT=127')
                 runner_lines.append('  fi')
                 runner_lines.append('fi')
             elif re.search(r"\bollama\s+serve\b", req.cmd):
@@ -1431,13 +1431,13 @@ def setup_cookbook_routes() -> APIRouter:
                 # ollama on 11434), scan upward for a free one rather than
                 # silently reattaching to an external service that Stop
                 # can't reach.
-                runner_lines.append(f'ODYSSEUS_OLLAMA_HOST={_bash_squote(_ollama_host)}')
-                runner_lines.append(f'ODYSSEUS_OLLAMA_PORT="{_ollama_port}"')
-                runner_lines.append('for _ody_off in 0 1 2 3 4 5 6 7 8 9; do')
-                runner_lines.append('  _ody_try_port=$((ODYSSEUS_OLLAMA_PORT + _ody_off))')
-                runner_lines.append('  if ! (exec 3<>/dev/tcp/127.0.0.1/$_ody_try_port) 2>/dev/null; then')
+                runner_lines.append(f'LODESTAR_OLLAMA_HOST={_bash_squote(_ollama_host)}')
+                runner_lines.append(f'LODESTAR_OLLAMA_PORT="{_ollama_port}"')
+                runner_lines.append('for _los_off in 0 1 2 3 4 5 6 7 8 9; do')
+                runner_lines.append('  _los_try_port=$((LODESTAR_OLLAMA_PORT + _los_off))')
+                runner_lines.append('  if ! (exec 3<>/dev/tcp/127.0.0.1/$_los_try_port) 2>/dev/null; then')
                 runner_lines.append('    exec 3<&-; exec 3>&-')
-                runner_lines.append('    ODYSSEUS_OLLAMA_PORT="$_ody_try_port"')
+                runner_lines.append('    LODESTAR_OLLAMA_PORT="$_los_try_port"')
                 runner_lines.append('    break')
                 runner_lines.append('  fi')
                 runner_lines.append('  exec 3<&-; exec 3>&-')
@@ -1448,21 +1448,21 @@ def setup_cookbook_routes() -> APIRouter:
                 runner_lines.append('  echo "=== Process exited with code 127 ==="')
                 runner_lines.append('  exec bash -i')
                 runner_lines.append('fi')
-                runner_lines.append('ODYSSEUS_OLLAMA_URL="http://${ODYSSEUS_OLLAMA_HOST}:${ODYSSEUS_OLLAMA_PORT}"')
+                runner_lines.append('LODESTAR_OLLAMA_URL="http://${LODESTAR_OLLAMA_HOST}:${LODESTAR_OLLAMA_PORT}"')
                 if remote and _ollama_host in ("0.0.0.0", "::"):
-                    runner_lines.append('echo "[odysseus] WARNING: remote Ollama will bind to ${ODYSSEUS_OLLAMA_HOST}:${ODYSSEUS_OLLAMA_PORT} so Odysseus can reach it from this host."')
+                    runner_lines.append('echo "[odysseus] WARNING: remote Ollama will bind to ${LODESTAR_OLLAMA_HOST}:${LODESTAR_OLLAMA_PORT} so Odysseus can reach it from this host."')
                     runner_lines.append('echo "[odysseus] Ollama has no built-in authentication; expose this only on a trusted LAN/VPN or provide an explicit OLLAMA_HOST with your own access controls."')
-                runner_lines.append('echo "Starting ollama server on ${ODYSSEUS_OLLAMA_HOST}:${ODYSSEUS_OLLAMA_PORT}..."')
-                runner_lines.append('OLLAMA_HOST="${ODYSSEUS_OLLAMA_HOST}:${ODYSSEUS_OLLAMA_PORT}" ollama serve')
-                runner_lines.append('_ody_exit=$?')
+                runner_lines.append('echo "Starting ollama server on ${LODESTAR_OLLAMA_HOST}:${LODESTAR_OLLAMA_PORT}..."')
+                runner_lines.append('OLLAMA_HOST="${LODESTAR_OLLAMA_HOST}:${LODESTAR_OLLAMA_PORT}" ollama serve')
+                runner_lines.append('_los_exit=$?')
                 runner_lines.append('echo')
-                runner_lines.append('echo "=== Process exited with code ${_ody_exit} ==="')
+                runner_lines.append('echo "=== Process exited with code ${_los_exit} ==="')
                 runner_lines.append('exec bash -i')
             elif "vllm serve" in req.cmd:
                 # vLLM is CUDA/ROCm-only and does not run on macOS at all.
                 runner_lines.append('if [ "$(uname -s)" = "Darwin" ]; then')
                 runner_lines.append('  echo "ERROR: vLLM does not run on macOS. Use Ollama or llama.cpp (Metal) instead."')
-                runner_lines.append('  ODYSSEUS_PREFLIGHT_EXIT=1')
+                runner_lines.append('  LODESTAR_PREFLIGHT_EXIT=1')
                 runner_lines.append('fi')
                 # Put ~/.local/bin on PATH first — without a venv, vllm installs
                 # there via --user and the non-login serve shell otherwise can't
@@ -1470,24 +1470,24 @@ def setup_cookbook_routes() -> APIRouter:
                 runner_lines.append('export PATH="$HOME/.local/bin:$PATH"')
                 runner_lines.append('if ! command -v vllm &>/dev/null; then')
                 runner_lines.append('  echo "ERROR: vLLM is not installed."')
-                runner_lines.append('  ODYSSEUS_PREFLIGHT_EXIT=127')
+                runner_lines.append('  LODESTAR_PREFLIGHT_EXIT=127')
                 runner_lines.append('fi')
             elif "sglang.launch_server" in req.cmd:
                 runner_lines.append('export PATH="$HOME/.local/bin:$PATH"')
                 runner_lines.append('if ! command -v sglang &>/dev/null; then')
                 runner_lines.append('  echo "ERROR: SGLang is not installed."')
-                runner_lines.append('  ODYSSEUS_PREFLIGHT_EXIT=127')
-                runner_lines.append('elif ! ODYSSEUS_SGLANG_IMPORT_ERROR="$(python3 -c "import sglang" 2>&1)"; then')
+                runner_lines.append('  LODESTAR_PREFLIGHT_EXIT=127')
+                runner_lines.append('elif ! LODESTAR_SGLANG_IMPORT_ERROR="$(python3 -c "import sglang" 2>&1)"; then')
                 runner_lines.append('  echo "ERROR: SGLang is installed but failed to import."')
-                runner_lines.append('  printf "%s\\n" "$ODYSSEUS_SGLANG_IMPORT_ERROR"')
-                runner_lines.append('  ODYSSEUS_PREFLIGHT_EXIT=127')
+                runner_lines.append('  printf "%s\\n" "$LODESTAR_SGLANG_IMPORT_ERROR"')
+                runner_lines.append('  LODESTAR_PREFLIGHT_EXIT=127')
                 runner_lines.append('fi')
             elif "scripts/diffusion_server.py" in req.cmd or ".diffusion_server.py" in req.cmd:
                 runner_lines.append('export PATH="$HOME/.local/bin:$PATH"')
-                runner_lines.append('if ! ODYSSEUS_DIFFUSION_IMPORT_ERROR="$(python3 -c "import torch, diffusers" 2>&1)"; then')
+                runner_lines.append('if ! LODESTAR_DIFFUSION_IMPORT_ERROR="$(python3 -c "import torch, diffusers" 2>&1)"; then')
                 runner_lines.append('  echo "ERROR: Diffusion serving requires PyTorch + diffusers."')
-                runner_lines.append('  printf "%s\\n" "$ODYSSEUS_DIFFUSION_IMPORT_ERROR"')
-                runner_lines.append('  ODYSSEUS_PREFLIGHT_EXIT=127')
+                runner_lines.append('  printf "%s\\n" "$LODESTAR_DIFFUSION_IMPORT_ERROR"')
+                runner_lines.append('  LODESTAR_PREFLIGHT_EXIT=127')
                 runner_lines.append('fi')
 
             handled_ollama_sidecar_probe = False
@@ -1499,10 +1499,10 @@ def setup_cookbook_routes() -> APIRouter:
                     keep_shell_open=not local_windows,
                 )
                 runner_lines.append(req.cmd)
-                runner_lines.append('_ody_exit=$?')
+                runner_lines.append('_los_exit=$?')
                 runner_lines.append('echo')
-                runner_lines.append('echo "=== Process exited with code ${_ody_exit} ==="')
-                runner_lines.append('if [ "$_ody_exit" -eq 0 ]; then')
+                runner_lines.append('echo "=== Process exited with code ${_los_exit} ==="')
+                runner_lines.append('if [ "$_los_exit" -eq 0 ]; then')
                 runner_lines.append('  echo "[odysseus] Ollama sidecar model is available; keeping Cookbook task attached to the persistent Ollama daemon."')
                 runner_lines.append('  while true; do sleep 3600; done')
                 runner_lines.append('fi')

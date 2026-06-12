@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 server = Server("email")
 EMAIL_SOCKET_TIMEOUT = float(os.environ.get("EMAIL_SOCKET_TIMEOUT", "20"))
 from src.constants import DATA_DIR as _DATA_DIR, APP_DB, EMAIL_CACHE_DB, SETTINGS_FILE as _SETTINGS_FILE, MAIL_ATTACHMENTS_DIR
+from src.env_compat import getenv as _getenv_compat
 DATA_DIR = Path(_DATA_DIR)
 
 
@@ -101,7 +102,7 @@ def _default_document_owner() -> str | None:
     but the document library is owner-filtered. Stamp drafts to the configured
     single/default admin so assistant-created email drafts are visible.
     """
-    owner = os.environ.get("ODYSSEUS_DOCUMENT_OWNER", "").strip()
+    owner = (_getenv_compat("LODESTAR_DOCUMENT_OWNER", "ODYSSEUS_DOCUMENT_OWNER", "") or "").strip()
     if owner:
         return owner
     try:

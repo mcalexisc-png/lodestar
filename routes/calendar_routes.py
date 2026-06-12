@@ -14,6 +14,7 @@ from dateutil.rrule import rrulestr
 from core.database import SessionLocal, CalendarCal, CalendarEvent
 from src.auth_helpers import require_user
 from src.upload_limits import read_upload_limited, ICS_MAX_BYTES
+from src.env_compat import getenv as _getenv_compat
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +38,11 @@ def _ics_naive_dtstart(dt):
 # Single-user fallback identity. Used only when:
 #   1. The app is configured for single-user (no auth middleware), AND
 #   2. The request didn't resolve to an authenticated user.
-# Override at deploy time via `ODYSSEUS_FALLBACK_OWNER` env var. In a real
-# multi-user install set `ODYSSEUS_SINGLE_USER=0` so unauthenticated requests
+# Override at deploy time via `LODESTAR_FALLBACK_OWNER` env var. In a real
+# multi-user install set `LODESTAR_SINGLE_USER=0` so unauthenticated requests
 # are rejected instead of silently writing to this address.
-import os as _os
-FALLBACK_OWNER = _os.environ.get("ODYSSEUS_FALLBACK_OWNER", "owner@localhost")
-_SINGLE_USER_MODE = _os.environ.get("ODYSSEUS_SINGLE_USER", "1") != "0"
+FALLBACK_OWNER = _getenv_compat("LODESTAR_FALLBACK_OWNER", "ODYSSEUS_FALLBACK_OWNER", "owner@localhost")
+_SINGLE_USER_MODE = _getenv_compat("LODESTAR_SINGLE_USER", "ODYSSEUS_SINGLE_USER", "1") != "0"
 
 
 def _require_user(request: Request) -> str:

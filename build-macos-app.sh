@@ -10,13 +10,13 @@
 #
 # This is a *launcher* wrapper: it drives the venv we set up in this repo, it
 # does not bundle Python. The install path is baked into the app at build time,
-# so rebuild if you move the repo. Override the port with ODYSSEUS_PORT.
+# so rebuild if you move the repo. Override the port with LODESTAR_PORT.
 set -e
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_NAME="Lodestar"
 INSTALL_DIR="$REPO_DIR"
-PORT="${ODYSSEUS_PORT:-7860}"
+PORT="${LODESTAR_PORT:-${ODYSSEUS_PORT:-7860}}"
 DIST="$REPO_DIR/dist"
 APP="$DIST/$APP_NAME.app"
 

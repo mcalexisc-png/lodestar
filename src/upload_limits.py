@@ -4,8 +4,11 @@ import os
 
 from fastapi import HTTPException, UploadFile
 
+from src.env_compat import getenv as _getenv_compat
+
 DEFAULT_CHAT_UPLOAD_MAX_BYTES = 10 * 1024 * 1024
-CHAT_UPLOAD_MAX_BYTES_ENV = "ODYSSEUS_CHAT_UPLOAD_MAX_BYTES"
+CHAT_UPLOAD_MAX_BYTES_ENV = "LODESTAR_CHAT_UPLOAD_MAX_BYTES"
+CHAT_UPLOAD_MAX_BYTES_LEGACY_ENV = "ODYSSEUS_CHAT_UPLOAD_MAX_BYTES"
 
 
 def format_byte_limit(limit: int) -> str:
@@ -16,8 +19,10 @@ def format_byte_limit(limit: int) -> str:
     return f"{limit} bytes"
 
 
-def read_byte_limit_env(name: str, default: int) -> int:
+def read_byte_limit_env(name: str, default: int, legacy_name: str | None = None) -> int:
     raw = os.getenv(name)
+    if raw is None and legacy_name is not None:
+        raw = _getenv_compat(name, legacy_name)
     if raw is None or not raw.strip():
         return default
     try:
@@ -30,34 +35,35 @@ def read_byte_limit_env(name: str, default: int) -> int:
 
 
 def get_chat_upload_max_bytes() -> int:
-    return read_byte_limit_env(CHAT_UPLOAD_MAX_BYTES_ENV, DEFAULT_CHAT_UPLOAD_MAX_BYTES)
+    return read_byte_limit_env(CHAT_UPLOAD_MAX_BYTES_ENV, DEFAULT_CHAT_UPLOAD_MAX_BYTES, CHAT_UPLOAD_MAX_BYTES_LEGACY_ENV)
 
 
 # Per-route upload byte-limits, single-sourced here (issue #3364). Each is
 # validated + env-overridable via read_byte_limit_env: set the matching
-# ODYSSEUS_*_MAX_BYTES env var to an integer byte count to tune it; an invalid
+# LODESTAR_*_MAX_BYTES env var to an integer byte count to tune it; an invalid
 # value fails fast at import rather than crashing mid-request. Defaults match
 # the prior per-route values, so behavior is unchanged unless an env var is set.
+# The ODYSSEUS_*_MAX_BYTES names still work as deprecated fallbacks.
 GALLERY_UPLOAD_MAX_BYTES = read_byte_limit_env(
-    "ODYSSEUS_GALLERY_UPLOAD_MAX_BYTES", 100 * 1024 * 1024
+    "LODESTAR_GALLERY_UPLOAD_MAX_BYTES", 100 * 1024 * 1024, "ODYSSEUS_GALLERY_UPLOAD_MAX_BYTES"
 )
 GALLERY_TRANSFORM_UPLOAD_MAX_BYTES = read_byte_limit_env(
-    "ODYSSEUS_GALLERY_TRANSFORM_UPLOAD_MAX_BYTES", 25 * 1024 * 1024
+    "LODESTAR_GALLERY_TRANSFORM_UPLOAD_MAX_BYTES", 25 * 1024 * 1024, "ODYSSEUS_GALLERY_TRANSFORM_UPLOAD_MAX_BYTES"
 )
 MEMORY_IMPORT_MAX_BYTES = read_byte_limit_env(
-    "ODYSSEUS_MEMORY_IMPORT_MAX_BYTES", 10 * 1024 * 1024
+    "LODESTAR_MEMORY_IMPORT_MAX_BYTES", 10 * 1024 * 1024, "ODYSSEUS_MEMORY_IMPORT_MAX_BYTES"
 )
 PERSONAL_UPLOAD_MAX_BYTES = read_byte_limit_env(
-    "ODYSSEUS_PERSONAL_UPLOAD_MAX_BYTES", 25 * 1024 * 1024
+    "LODESTAR_PERSONAL_UPLOAD_MAX_BYTES", 25 * 1024 * 1024, "ODYSSEUS_PERSONAL_UPLOAD_MAX_BYTES"
 )
 EMAIL_COMPOSE_UPLOAD_MAX_BYTES = read_byte_limit_env(
-    "ODYSSEUS_EMAIL_COMPOSE_UPLOAD_MAX_BYTES", 25 * 1024 * 1024
+    "LODESTAR_EMAIL_COMPOSE_UPLOAD_MAX_BYTES", 25 * 1024 * 1024, "ODYSSEUS_EMAIL_COMPOSE_UPLOAD_MAX_BYTES"
 )
 STT_MAX_AUDIO_BYTES = read_byte_limit_env(
-    "ODYSSEUS_STT_MAX_AUDIO_BYTES", 25 * 1024 * 1024
+    "LODESTAR_STT_MAX_AUDIO_BYTES", 25 * 1024 * 1024, "ODYSSEUS_STT_MAX_AUDIO_BYTES"
 )
 ICS_MAX_BYTES = read_byte_limit_env(
-    "ODYSSEUS_ICS_MAX_BYTES", 10 * 1024 * 1024
+    "LODESTAR_ICS_MAX_BYTES", 10 * 1024 * 1024, "ODYSSEUS_ICS_MAX_BYTES"
 )
 
 

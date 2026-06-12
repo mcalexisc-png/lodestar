@@ -65,6 +65,7 @@ from core.exceptions import (
 import bcrypt as _bcrypt
 
 from src.app_helpers import abs_join
+from src.env_compat import getenv as _getenv_compat
 from src.generated_images import GENERATED_IMAGE_HEADERS, resolve_generated_image_path
 from starlette.responses import RedirectResponse
 
@@ -1051,13 +1052,13 @@ async def _startup_event():
 
     # Start scheduled task runner — skip when running under a cron-driven
     # deployment where an external worker drives task firing. Mirrors
-    # `ODYSSEUS_INPROCESS_POLLERS` from the email pollers.
-    _tasks_inprocess = os.environ.get("ODYSSEUS_INPROCESS_TASKS", "1").strip().lower()
+    # `LODESTAR_INPROCESS_POLLERS` from the email pollers.
+    _tasks_inprocess = (_getenv_compat("LODESTAR_INPROCESS_TASKS", "ODYSSEUS_INPROCESS_TASKS", "1") or "1").strip().lower()
     if _tasks_inprocess not in ("0", "false", "no", "off", ""):
         await task_scheduler.start()
     else:
         logger.info(
-            "In-process task scheduler disabled (ODYSSEUS_INPROCESS_TASKS=0); "
+            "In-process task scheduler disabled (LODESTAR_INPROCESS_TASKS=0); "
             "drive task firing externally (e.g. cron)."
         )
     # Periodic null-owner sweep — re-runs the legacy-owner assignment hourly

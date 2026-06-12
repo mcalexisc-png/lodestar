@@ -337,10 +337,10 @@ def _append_pip_install_runner_lines(runner_lines: list[str], cmd: str) -> None:
 
 def _user_shell_path_bootstrap() -> list[str]:
     return [
-        'ODYSSEUS_USER_SHELL="${SHELL:-}"',
-        'if [ -n "$ODYSSEUS_USER_SHELL" ] && [ -x "$ODYSSEUS_USER_SHELL" ]; then',
-        '  ODYSSEUS_USER_PATH="$("$ODYSSEUS_USER_SHELL" -ic \'printf "__ODYSSEUS_PATH__%s\\n" "$PATH"\' 2>/dev/null | sed -n \'s/^__ODYSSEUS_PATH__//p\' | tail -n 1 || true)"',
-        '  if [ -n "$ODYSSEUS_USER_PATH" ]; then export PATH="$ODYSSEUS_USER_PATH:$PATH"; fi',
+        'LODESTAR_USER_SHELL="${SHELL:-}"',
+        'if [ -n "$LODESTAR_USER_SHELL" ] && [ -x "$LODESTAR_USER_SHELL" ]; then',
+        '  LODESTAR_USER_PATH="$("$LODESTAR_USER_SHELL" -ic \'printf "__LODESTAR_PATH__%s\\n" "$PATH"\' 2>/dev/null | sed -n \'s/^__LODESTAR_PATH__//p\' | tail -n 1 || true)"',
+        '  if [ -n "$LODESTAR_USER_PATH" ]; then export PATH="$LODESTAR_USER_PATH:$PATH"; fi',
         'fi',
         'command -v python3 >/dev/null 2>&1 || python3() { python "$@"; }',
         'command -v python >/dev/null 2>&1 || python() { python3 "$@"; }',
@@ -654,8 +654,8 @@ def _validate_serve_cmd(v: str | None) -> str | None:
 
 def _append_serve_preflight_exit_lines(runner_lines: list[str], *, keep_shell_open: bool) -> None:
     """Append serve-runner lines that surface preflight failures before exit."""
-    runner_lines.append('if [ -n "$ODYSSEUS_PREFLIGHT_EXIT" ]; then')
-    runner_lines.append('  echo ""; echo "=== Process exited with code $ODYSSEUS_PREFLIGHT_EXIT ==="')
+    runner_lines.append('if [ -n "$LODESTAR_PREFLIGHT_EXIT" ]; then')
+    runner_lines.append('  echo ""; echo "=== Process exited with code $LODESTAR_PREFLIGHT_EXIT ==="')
     if keep_shell_open:
         # Decouple the post-crash interactive shell from the persistent log
         # file. fds 3/4 were saved BEFORE the tee redirect at the top of
@@ -666,7 +666,7 @@ def _append_serve_preflight_exit_lines(runner_lines: list[str], *, keep_shell_op
         runner_lines.append('  sleep 0.2  # let tee child flush + exit')
         runner_lines.append('  exec "${SHELL:-/bin/bash}"')
     else:
-        runner_lines.append('  exit "$ODYSSEUS_PREFLIGHT_EXIT"')
+        runner_lines.append('  exit "$LODESTAR_PREFLIGHT_EXIT"')
     runner_lines.append('fi')
 
 
@@ -675,14 +675,14 @@ def _append_vllm_linux_preflight_lines(runner_lines: list[str]) -> None:
     # Keep the user install bin visible for Lodestar-managed `pip install --user`
     # installs, but then report the actual CLI path so external runtimes are clear.
     runner_lines.append('export PATH="$HOME/.local/bin:$PATH"')
-    runner_lines.append('ODYSSEUS_VLLM_BIN="$(command -v vllm 2>/dev/null || true)"')
-    runner_lines.append('if [ -z "$ODYSSEUS_VLLM_BIN" ]; then')
+    runner_lines.append('LODESTAR_VLLM_BIN="$(command -v vllm 2>/dev/null || true)"')
+    runner_lines.append('if [ -z "$LODESTAR_VLLM_BIN" ]; then')
     runner_lines.append('  echo "ERROR: vLLM is not installed."')
-    runner_lines.append('  ODYSSEUS_PREFLIGHT_EXIT=127')
+    runner_lines.append('  LODESTAR_PREFLIGHT_EXIT=127')
     runner_lines.append('else')
-    runner_lines.append('  echo "[odysseus] vLLM CLI: $ODYSSEUS_VLLM_BIN"')
-    runner_lines.append('  ODYSSEUS_VLLM_VERSION="$("$ODYSSEUS_VLLM_BIN" --version 2>&1 | head -n 1 || true)"')
-    runner_lines.append('  if [ -n "$ODYSSEUS_VLLM_VERSION" ]; then echo "[odysseus] vLLM version: $ODYSSEUS_VLLM_VERSION"; fi')
+    runner_lines.append('  echo "[odysseus] vLLM CLI: $LODESTAR_VLLM_BIN"')
+    runner_lines.append('  LODESTAR_VLLM_VERSION="$("$LODESTAR_VLLM_BIN" --version 2>&1 | head -n 1 || true)"')
+    runner_lines.append('  if [ -n "$LODESTAR_VLLM_VERSION" ]; then echo "[odysseus] vLLM version: $LODESTAR_VLLM_VERSION"; fi')
     runner_lines.append('fi')
 
 def _append_serve_exit_code_lines(
@@ -692,18 +692,18 @@ def _append_serve_exit_code_lines(
     is_pip_install: bool = False,
 ) -> None:
     """Append serve-runner lines that preserve and report the command exit code."""
-    runner_lines.append('ODYSSEUS_CMD_EXIT=$?')
+    runner_lines.append('LODESTAR_CMD_EXIT=$?')
     if is_pip_install:
-        runner_lines.append('if [ $ODYSSEUS_CMD_EXIT -eq 0 ]; then echo ""; echo "DOWNLOAD_OK"; fi')
+        runner_lines.append('if [ $LODESTAR_CMD_EXIT -eq 0 ]; then echo ""; echo "DOWNLOAD_OK"; fi')
     if keep_shell_open:
-        runner_lines.append('echo ""; echo "=== Process exited with code $ODYSSEUS_CMD_EXIT ==="')
+        runner_lines.append('echo ""; echo "=== Process exited with code $LODESTAR_CMD_EXIT ==="')
         # See preflight branch above for the rationale on restoring fds 3/4.
         runner_lines.append('exec 1>&3 2>&4 3>&- 4>&- 2>/dev/null || true')
         runner_lines.append('sleep 0.2  # let tee child flush + exit')
         runner_lines.append('exec "${SHELL:-/bin/bash}"')
     else:
-        runner_lines.append('echo ""; echo "=== Process exited with code $ODYSSEUS_CMD_EXIT ==="')
-        runner_lines.append('exit "$ODYSSEUS_CMD_EXIT"')
+        runner_lines.append('echo ""; echo "=== Process exited with code $LODESTAR_CMD_EXIT ==="')
+        runner_lines.append('exit "$LODESTAR_CMD_EXIT"')
 
 
 def _append_llama_cpp_linux_accel_build_lines(runner_lines: list[str]) -> None:

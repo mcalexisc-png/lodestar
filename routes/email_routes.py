@@ -57,7 +57,7 @@ from routes.email_pollers import _start_poller
 
 logger = logging.getLogger(__name__)
 
-ODYSSEUS_MAIL_ORIGIN = "lodestar-ui"
+LODESTAR_MAIL_ORIGIN = "lodestar-ui"
 
 
 def _email_tag_owner_aliases(account_id: str | None, owner: str = "") -> list[str]:
@@ -352,8 +352,10 @@ def _move_email_message(conn, uid: str, dest: str, role: str = "") -> bool:
     return False
 
 
-def _apply_odysseus_headers(msg, kind: str | None = None, ref_id: str | None = None):
-    msg["X-Lodestar-Origin"] = ODYSSEUS_MAIL_ORIGIN
+# TODO(lodestar): `odysseus_kind`/`odysseus_ref` are also a `scheduled_emails`
+# DB column/param names; rename together in a schema migration, not here.
+def _apply_lodestar_headers(msg, kind: str | None = None, ref_id: str | None = None):
+    msg["X-Lodestar-Origin"] = LODESTAR_MAIL_ORIGIN
     if kind:
         msg["X-Lodestar-Kind"] = re.sub(r"[^A-Za-z0-9_.-]", "-", kind)[:64]
     if ref_id:
@@ -1978,7 +1980,7 @@ def setup_email_routes():
             outer["Cc"] = cc
         outer["Subject"] = subject or ""
         outer["Date"] = datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000")
-        _apply_odysseus_headers(outer, odysseus_kind or "scheduled", odysseus_ref)
+        _apply_lodestar_headers(outer, odysseus_kind or "scheduled", odysseus_ref)
         if in_reply_to:
             outer["In-Reply-To"] = in_reply_to
         if references:
@@ -2188,7 +2190,7 @@ def setup_email_routes():
         if req.references:
             outer["References"] = req.references
         if req.odysseus_kind:
-            _apply_odysseus_headers(outer, req.odysseus_kind)
+            _apply_lodestar_headers(outer, req.odysseus_kind)
 
         # Plain + HTML body. Escape user content so a `<script>` or
         # `<img onerror=...>` paste in compose doesn't end up as live HTML
