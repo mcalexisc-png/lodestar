@@ -1216,6 +1216,17 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
     if name in _BUILTIN_EMAIL_TOOLS:
         return ToolBlock(f"mcp__email__{name}", json.dumps(args) if args else "{}")
     if tool_type not in TOOL_TAGS:
+        # In-process plugin tools (Tier 2) are discovered at runtime and are not
+        # in the static TOOL_TAGS set. Pass their full JSON args through as
+        # content; the plugin parses what it needs. _try_plugin_dispatch in
+        # tool_execution rejects names that aren't actually registered/enabled.
+        try:
+            from src.plugins import get_plugin_loader
+
+            if name in get_plugin_loader().tool_names():
+                return ToolBlock(name, json.dumps(args) if args else "{}")
+        except Exception:
+            pass
         logger.warning(f"Unknown function call: {name}")
         return None
 

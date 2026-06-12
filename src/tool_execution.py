@@ -781,11 +781,34 @@ async def execute_tool_block(
             desc = f"mcp: {tool}"
             result = {"error": "MCP manager not available", "exit_code": 1}
     else:
-        desc = f"unknown: {tool}"
-        result = {"error": f"Unknown tool type: {tool}", "exit_code": 1}
+        # In-process plugin tools (Tier 2). Lazy: the loader only imports the
+        # plugin module on first call, and only enabled plugins are dispatched.
+        plugin_result = await _try_plugin_dispatch(tool, content, owner=owner, session_id=session_id)
+        if plugin_result is not None:
+            desc, result = plugin_result
+        else:
+            desc = f"unknown: {tool}"
+            result = {"error": f"Unknown tool type: {tool}", "exit_code": 1}
 
     logger.info(f"Tool executed: {desc} -> exit_code={result.get('exit_code', 'n/a')}")
     return desc, result
+
+
+async def _try_plugin_dispatch(tool, content, owner=None, session_id=None):
+    """Dispatch to an in-process plugin tool if one matches. Returns
+    (desc, result) or None if no plugin owns this tool name."""
+    try:
+        from src.plugins import get_plugin_loader
+
+        loader = get_plugin_loader()
+        if tool not in loader.tool_names():
+            return None
+        ctx = {"owner": owner, "session_id": session_id}
+        result = await loader.execute(tool, content, ctx)
+        return f"plugin: {tool}", result
+    except Exception as e:
+        logger.warning("plugin dispatch failed for %s: %s", tool, e)
+        return None
 
 
 # ---------------------------------------------------------------------------

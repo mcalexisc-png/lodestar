@@ -2162,6 +2162,25 @@ async def stream_agent_loop(
                     if s.get("function", {}).get("name") not in _ADMIN_SCHEMA_NAMES
                 ]
                 all_tool_schemas = base_schemas + mcp_schemas
+            # In-process plugin tools (Tier 2): append enabled plugin schemas so
+            # the LLM can call them. Discovery is lazy/cached. Skip entirely in
+            # guide-only mode (no tools that turn). If RAG tool selection is
+            # active, only include plugins it selected; with no selection (and
+            # not guide-only) include all enabled plugins, matching how
+            # base_schemas behaves above.
+            if not guide_only:
+                try:
+                    from src.plugins import get_plugin_loader
+
+                    _plugin_schemas = get_plugin_loader().tool_schemas()
+                    if _relevant_tools:
+                        _plugin_schemas = [
+                            s for s in _plugin_schemas
+                            if s.get("function", {}).get("name") in _relevant_tools
+                        ]
+                    all_tool_schemas = all_tool_schemas + _plugin_schemas
+                except Exception:
+                    pass
             if disabled_tools:
                 all_tool_schemas = [
                     t for t in all_tool_schemas

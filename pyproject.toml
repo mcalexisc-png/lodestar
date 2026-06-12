@@ -4,6 +4,14 @@ version = "0.1.0-dev"
 description = "Self-hosted AI for everyone -- your own private workspace, guided by your own star, running on the hardware you already have."
 requires-python = ">=3.11"
 
+# In-process plugin entry points (Tier 2). Third-party plugins declare their own
+# `lodestar.tools` entry point in their package metadata; this registers the
+# bundled example. When the app runs from source (not pip-installed), the plugin
+# loader also discovers bundled plugins by scanning the repo `plugins/` dir, so
+# the example works either way.
+[project.entry-points."lodestar.tools"]
+text_stats = "plugins.lodestar_textstats:manifest"
+
 [tool.ruff]
 line-length = 120
 target-version = "py311"
