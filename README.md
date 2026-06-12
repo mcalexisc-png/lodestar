@@ -42,9 +42,10 @@ no telemetry, no trojan.
 
 Low-end performance is a first-class goal, not an afterthought. Lodestar aims
 to run comfortably on modest hardware -- old laptops, mini PCs, a spare
-desktop -- without requiring a beefy GPU. See `LODESTAR_LITE` in
-[Configuration](#configuration) for the lite-mode flag that future releases
-will use to gate heavier defaults.
+desktop -- without requiring a beefy GPU. For machines with limited RAM/CPU
+and no GPU, run `./install-lite.sh` (or `install-lite.ps1` on Windows) -- see
+[Lite install](#lite-install-low-end-hardware) below. See `LODESTAR_LITE` in
+[Configuration](#configuration) for what the flag changes.
 
 ## Demo
 A full, hover-to-play tour lives on the landing page (`docs/index.html`).
@@ -107,6 +108,39 @@ Requirements: Python 3.11+. Cookbook also needs `tmux` for background model
 downloads and serves. The app itself is lightweight; local model serving is the
 heavy part and depends on the model, runtime, GPU, and VRAM, so small hosts can
 connect to API or remote model servers instead. Use `--host 0.0.0.0` only when you intentionally want LAN/reverse-proxy access.
+
+### Lite install (low-end hardware)
+For old laptops, mini PCs, or any machine with limited RAM/CPU and no GPU,
+use the lite installer instead. It skips the ChromaDB/ONNX vector-search
+stack (`chromadb-client`, `fastembed`, `onnxruntime`) at install time and
+launches with `LODESTAR_LITE=true`, which:
+- falls back to keyword search for memory and personal-doc RAG instead of
+  ChromaDB vector search
+- skips auto-starting the Playwright/browser MCP server
+- uses smaller SQLite cache/mmap sizes
+- runs a single uvicorn worker
+
+Every feature still works -- semantic search just degrades to keyword search.
+
+**Linux / macOS:**
+```bash
+git clone https://github.com/<you>/lodestar.git
+cd lodestar
+./install-lite.sh
+```
+
+**Windows:**
+```powershell
+git clone https://github.com/<you>/lodestar.git
+cd lodestar
+powershell -ExecutionPolicy Bypass -File .\install-lite.ps1
+```
+
+Both scripts create a venv, install the lite dependency set, run first-run
+setup (prints the admin password), and start the server on
+`http://127.0.0.1:7000`. Safe to re-run. To switch a full install to lite
+mode (or back) without reinstalling, set `LODESTAR_LITE=true` (or `false`)
+in `.env` and restart.
 
 ### Apple Silicon
 Docker on macOS cannot use the Metal GPU. For GPU-accelerated Cookbook on an
@@ -422,7 +456,7 @@ Key settings:
 | `CHROMADB_HOST` | `localhost` | ChromaDB host for vector memory. Docker overrides this to `chromadb`. |
 | `CHROMADB_PORT` | `8100` | ChromaDB port for manual host runs. Docker overrides this to `8000`. |
 | `EMBEDDING_URL` | -- | OpenAI-compatible embeddings endpoint |
-| `LODESTAR_LITE` | `false` | Enable lite mode for low-end hardware (currently has no behavioral effect; see `# TODO(lodestar)` markers). |
+| `LODESTAR_LITE` | `false` | Enable lite mode for low-end hardware: keyword-only memory/RAG (no ChromaDB), no Playwright/browser MCP, smaller SQLite caches. Set automatically by `install-lite.sh`/`.ps1`. |
 | `LODESTAR_CHAT_UPLOAD_MAX_BYTES` | `10485760` | Chat/agent attachment cap in bytes. Raise for larger local PDFs or text documents. |
 | `LODESTAR_GALLERY_UPLOAD_MAX_BYTES` | `104857600` | Gallery image upload cap in bytes (100 MB). |
 | `LODESTAR_GALLERY_TRANSFORM_UPLOAD_MAX_BYTES` | `26214400` | Gallery transform input cap in bytes (25 MB). |
