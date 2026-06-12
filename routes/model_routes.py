@@ -280,6 +280,10 @@ _PROVIDER_CURATED = {
     "xai": [
         "grok-4.3", "grok-4", "grok-4-fast", "grok-3", "grok-3-fast",
     ],
+    "cerebras": [
+        "llama-3.3-70b", "llama3.1-8b", "qwen-3-32b", "qwen-3-235b-a22b-instruct-2507",
+        "gpt-oss-120b",
+    ],
 }
 
 # Map hostnames → curated-list keys for providers whose _detect_provider()
@@ -301,6 +305,7 @@ _HOST_TO_CURATED = (
     ("nvidia.com", "nvidia"),
     ("openrouter.ai", "openrouter"),
     ("ollama.com", "ollama"),
+    ("cerebras.ai", "cerebras"),
 )
 
 
