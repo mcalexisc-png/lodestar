@@ -48,6 +48,14 @@ DEFAULT_SETTINGS = {
     "stt_provider": "disabled",
     "stt_model": "base",
     "stt_language": "",
+    # Memory vector backend selection (Phase 3 embedded vector store).
+    #   "auto"       — embedded sqlite-vec for single-user (default), but
+    #                  ChromaDB if a CHROMADB_HOST is explicitly configured.
+    #   "sqlite_vec" — force the embedded store (no ChromaDB server needed).
+    #   "chromadb"   — force the server-backed ChromaDB store (full/multi-user).
+    # Env LODESTAR_VECTOR_BACKEND overrides this. Either backend degrades to
+    # keyword memory search if unavailable.
+    "vector_backend": "auto",
     "search_provider": "searxng",
     # Default fallback chain — when the primary provider fails or
     # rate-limits, we try DuckDuckGo next. Free, no API key required, so

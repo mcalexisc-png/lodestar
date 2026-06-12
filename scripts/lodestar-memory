@@ -115,6 +115,43 @@ def cmd_categories(args):
     emit([{"category": c, "count": n} for c, n in rows], args)
 
 
+def cmd_reindex(args):
+    """Rebuild the memory vector index from data/memory.json.
+
+    memory.json is the system of record; the vector index (embedded
+    sqlite-vec, or ChromaDB in full mode) is a rebuildable index over it.
+    This is the safe migration/import path after switching backends or
+    enabling embedded vectors on an existing install — no memory data is
+    moved or risked, only the index is recomputed.
+    """
+    from src.providers.selection import select_embedding_provider, select_vector_store
+    from src.settings import load_settings
+    from src.constants import LODESTAR_LITE
+
+    settings = load_settings()
+    entries = _memory_entries(_manager().load_all())
+
+    provider = select_embedding_provider(settings, LODESTAR_LITE)
+    store = select_vector_store(settings, LODESTAR_LITE, provider)
+    if store is None:
+        fail(
+            "No vector backend available (keyword-only). In lite mode, set "
+            "EMBEDDING_URL to a hosted embeddings endpoint, or run in full "
+            "mode with ChromaDB. Nothing to reindex."
+        )
+        return
+    store.rebuild(entries)
+    stats = store.get_stats()
+    emit(
+        {
+            "backend": stats.get("backend"),
+            "indexed": stats.get("count"),
+            "source_entries": len(entries),
+        },
+        args,
+    )
+
+
 def _build_parser():
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--pretty", action="store_true")
@@ -149,6 +186,13 @@ def _build_parser():
 
     pc = sub.add_parser("categories", parents=[common])
     pc.set_defaults(func=cmd_categories)
+
+    pr = sub.add_parser(
+        "reindex",
+        parents=[common],
+        help="rebuild the vector index from memory.json (safe; index only)",
+    )
+    pr.set_defaults(func=cmd_reindex)
 
     return p
 

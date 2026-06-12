@@ -53,32 +53,39 @@ def initialize_managers(base_dir: str, rag_manager=None) -> Dict[str, Any]:
     api_key_manager = APIKeyManager(DATA_DIR)
     preset_manager = PresetManager(DATA_DIR)
 
-    # Initialize memory vector store (share embedding model with RAG if available)
+    # Initialize the memory vector store via the backend selector (Phase 3).
+    # The selector picks: embedded sqlite-vec (single-user default), the
+    # server-backed ChromaDB store (full/multi-user when CHROMADB_HOST is set or
+    # vector_backend="chromadb"), or None (keyword-only). Lite mode without a
+    # hosted embedding endpoint resolves to None and never loads ONNX, so the
+    # idle-RSS baseline is preserved exactly as before.
     memory_vector = None
-    if LODESTAR_LITE:
-        # Skip ChromaDB/fastembed entirely — NativeMemoryProvider.recall()
-        # already falls back to memory_manager.get_relevant_memories()
-        # (keyword search) when memory_vector is None.
-        logger.info("Memory vector store skipped (LODESTAR_LITE=true); using keyword memory search")
-    else:
-        try:
-            from src.memory_vector import MemoryVectorStore
-            embedding_model = getattr(rag_manager, '_model', None) if rag_manager else None
-            memory_vector = MemoryVectorStore(DATA_DIR, embedding_model=embedding_model)
-            if memory_vector.healthy:
-                # Rebuild index from existing memories if empty
-                if memory_vector.count() == 0:
-                    existing = memory_manager.load()
-                    if existing:
-                        memory_vector.rebuild(existing)
-                        logger.info(f"Rebuilt memory vector index from {len(existing)} existing entries")
-                logger.info("MemoryVectorStore initialized")
-            else:
-                logger.warning("MemoryVectorStore DEGRADED: ChromaDB vector memory unavailable")
-                memory_vector = None
-        except Exception as e:
-            logger.warning(f"MemoryVectorStore DEGRADED: {e}")
-            memory_vector = None
+    try:
+        from src.providers.selection import (
+            select_embedding_provider,
+            select_vector_store,
+        )
+        from src.settings import load_settings
+
+        settings = load_settings()
+        embedding_provider = select_embedding_provider(settings, LODESTAR_LITE)
+        memory_vector = select_vector_store(settings, LODESTAR_LITE, embedding_provider)
+
+        if memory_vector is None:
+            logger.info("Memory vector store unavailable; using keyword memory search")
+        else:
+            # Rebuild the index from existing memories if it's empty (first boot
+            # after enabling a backend, or a fresh vectors.db).
+            if memory_vector.count() == 0:
+                existing = memory_manager.load()
+                if existing:
+                    memory_vector.rebuild(existing)
+                    logger.info(f"Rebuilt memory vector index from {len(existing)} existing entries")
+            stats = memory_vector.get_stats()
+            logger.info("Memory vector store initialized (%s)", stats.get("backend", "unknown"))
+    except Exception as e:
+        logger.warning(f"Memory vector store selection failed ({e}); keyword fallback")
+        memory_vector = None
 
     memory_provider_registry = MemoryProviderRegistry([
         NativeMemoryProvider(memory_manager, memory_vector),
