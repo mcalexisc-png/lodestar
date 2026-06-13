@@ -516,7 +516,7 @@ def setup_chat_routes(
             # the first cached model off the matching endpoint so the
             # upstream isn't called with model="" (which surfaces as a
             # generic 401/503).
-        await asyncio.to_thread(_recover_empty_session_model, sess, session, owner=owner)
+            await asyncio.to_thread(_recover_empty_session_model, sess, session, owner=owner)
             if not getattr(sess, "model", "").strip():
                 raise HTTPException(
                     400,

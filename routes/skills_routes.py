@@ -991,14 +991,8 @@ async def _run_audit_all_job(key, skills_manager, names, url, model, headers, te
         job.pop("task", None)
 
 
-def _resolve_audit_models(owner=None):
-    """Resolve (url, model, headers, teacher) for an audit run from Settings.
-
-    Worker = Utility model (falling back to Default, normalized to a served
-    model id); teacher = the optional Settings → Teacher Model config. Shared
-    by the manual /audit-all route and scheduled/event audits. Raises
-    ValueError if no worker model.
-    """
+async def _resolve_audit_models(owner=None):
+    """Resolve (url, model, headers, teacher) for an audit run from Settings."""
     from src.endpoint_resolver import resolve_endpoint
     url, model, headers = resolve_endpoint("utility", owner=owner)
     if not url or not model:
@@ -1020,7 +1014,7 @@ def _resolve_audit_models(owner=None):
             spec = (get_setting("teacher_model", "") or "").strip()
             if spec:
                 from src.ai_interaction import _resolve_model
-                t_url, t_model, t_headers = _resolve_model(spec, owner=owner)
+                t_url, t_model, t_headers = await _resolve_model(spec, owner=owner)
                 if t_url and t_model:
                     teacher = (t_url, t_model, t_headers)
     except Exception as e:
@@ -1044,7 +1038,7 @@ async def run_scheduled_skill_audit(skills_manager: SkillsManager,
         return {"status": "running", "skipped": True}
 
     try:
-        url, model, headers, teacher = _resolve_audit_models(owner=owner)
+        url, model, headers, teacher = await _resolve_audit_models(owner=owner)
     except ValueError as e:
         logger.info(f"Scheduled skill audit skipped — {e}")
         return {"status": "skipped", "reason": str(e)}
@@ -1475,7 +1469,7 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
 
         # Worker model (Default, normalized) + optional teacher — shared resolver.
         try:
-            url, model, headers, teacher = _resolve_audit_models(owner=user)
+            url, model, headers, teacher = await _resolve_audit_models(owner=user)
         except ValueError as e:
             raise HTTPException(400, str(e))
 
