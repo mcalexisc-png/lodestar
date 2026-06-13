@@ -36909,6 +36909,29 @@ body.theme-frosted .modal {
 }
 .code-theme-toggle input { display: none; }
 
+.code-ai-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 6px;
+  border-right: 1px solid var(--border);
+  margin-right: 6px;
+}
+
+.code-ai-btn {
+  background: none;
+  border: none;
+  color: var(--accent, var(--red));
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: .65;
+  transition: opacity .15s, background .15s;
+  white-space: nowrap;
+}
+.code-ai-btn:hover { opacity: 1; background: color-mix(in srgb, var(--accent, var(--red)) 12%, transparent); }
+
 .code-output-actions { display: flex; gap: 6px; align-items: center; }
 
 .code-output-action {

@@ -181,6 +181,89 @@ def setup_code_routes() -> APIRouter:
         finally:
             db.close()
 
+    # ── AI code actions ──
+
+    @router.post("/ai")
+    async def code_ai_action(request: Request):
+        require_user(request)
+        if LODESTAR_LITE:
+            raise HTTPException(403, "ai_disabled_lite_mode")
+        body = await request.json()
+        file_path = (body or {}).get("file_path", "")
+        action = (body or {}).get("action", "")
+        user_prompt = (body or {}).get("prompt", "")
+        if not file_path or not action:
+            raise HTTPException(400, "file_path and action are required")
+        try:
+            resolved = _resolve_path(file_path)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        if not os.path.isfile(resolved):
+            raise HTTPException(404, "File not found")
+        try:
+            code = Path(resolved).read_text(encoding="utf-8", errors="replace")
+        except Exception as e:
+            raise HTTPException(500, f"Failed to read file: {e}")
+        if not code.strip():
+            raise HTTPException(400, "File is empty")
+        ext = Path(resolved).suffix.lstrip(".")
+
+        # Resolve AI endpoint — prefer task endpoint (which user can set to Nemotron)
+        from src.endpoint_resolver import resolve_endpoint
+        from src.llm_core import llm_call_async
+        user = get_current_user(request)
+        url, model, headers = resolve_endpoint("task", owner=user or None)
+        if not url or not model:
+            url, model, headers = resolve_endpoint("default", owner=user or None)
+        if not url or not model:
+            raise HTTPException(500, "No AI endpoint configured. Add one in Settings.")
+
+        prompts = {
+            "explain": (
+                "You are a senior software engineer. Explain the following code clearly:\n"
+                "- What it does at a high level\n"
+                "- Key functions and their purpose\n"
+                "- Any notable patterns or techniques used"
+            ),
+            "fix": (
+                "You are a senior software engineer. Review the following code for bugs, "
+                "security issues, and logic errors. List each issue found and suggest fixes."
+            ),
+            "refactor": (
+                "You are a senior software engineer. Suggest refactoring improvements for "
+                "the following code:\n- Readability and maintainability\n- Performance "
+                "optimizations\n- Better error handling\n- Modern idiomatic patterns"
+            ),
+            "optimize": (
+                "You are a performance engineer. Analyze the following code for performance "
+                "bottlenecks and suggest specific optimizations."
+            ),
+            "comment": (
+                "You are a documentation specialist. Add clear, professional comments to "
+                "the following code. Return the full code with comments added. Explain "
+                "non-obvious logic and document function signatures."
+            ),
+            "custom": user_prompt or "Review the following code.",
+        }
+        system_prompt = prompts.get(action, prompts["custom"])
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"File: {os.path.basename(resolved)}\nLanguage: {ext}\n\n```{ext}\n{code}\n```"},
+        ]
+
+        try:
+            response = await llm_call_async(
+                url, model, messages,
+                temperature=0.2 if action in ("fix", "refactor") else 0.3,
+                max_tokens=4096,
+                headers=headers,
+                timeout=120,
+            )
+            return {"response": response.strip(), "model": model}
+        except Exception as e:
+            raise HTTPException(502, f"AI call failed: {e}")
+
     # ── Code execution ──
 
     @router.post("/run")

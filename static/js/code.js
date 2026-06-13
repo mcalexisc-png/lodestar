@@ -73,6 +73,14 @@ function _renderUI() {
         <div class="code-tabs-bar" id="code-tabs-bar">
           <div class="code-tabs-empty">Open a file from the file tree</div>
           <div class="code-tabs-actions">
+            <div class="code-ai-actions" id="code-ai-actions" style="display:none">
+              <button class="code-ai-btn" data-action="explain" title="Explain this code">Explain</button>
+              <button class="code-ai-btn" data-action="fix" title="Find and fix bugs">Fix</button>
+              <button class="code-ai-btn" data-action="refactor" title="Suggest refactoring">Refactor</button>
+              <button class="code-ai-btn" data-action="optimize" title="Optimize performance">Optimize</button>
+              <button class="code-ai-btn" data-action="comment" title="Add comments">Comment</button>
+              <button class="code-ai-btn" data-action="custom" title="Ask anything about this code">Ask AI</button>
+            </div>
             <button class="code-action-btn" id="code-run-btn" title="Run Ctrl+Enter">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
               Run
@@ -133,6 +141,10 @@ function _renderUI() {
   document.getElementById('code-index-btn')?.addEventListener('click', _indexProject);
   document.getElementById('code-run-btn')?.addEventListener('click', _runActiveFile);
   document.getElementById('code-save-btn')?.addEventListener('click', saveActiveFile);
+
+  document.querySelectorAll('.code-ai-btn').forEach(btn => {
+    btn.addEventListener('click', () => _runAiAction(btn.dataset.action));
+  });
 
   const themeToggle = document.getElementById('code-editor-theme-toggle');
   if (themeToggle) {
@@ -316,11 +328,14 @@ function _clearEditor() {
     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
     <p>Select a file to edit</p>
   </div>`;
+  document.getElementById('code-ai-actions').style.display = 'none';
 }
 
 function _loadCodeMirror(content, language, scrollPos) {
   const area = document.getElementById('code-editor-area');
   if (!area) return;
+
+  document.getElementById('code-ai-actions').style.display = '';
 
   _getCodeMirror().then(cm => {
     const langExt = _getLangExtension(language);
@@ -382,6 +397,36 @@ function _editorUpdates() {
       _scheduleAutoSave(_activeFilePath, content);
     }
   });
+}
+
+async function _runAiAction(action) {
+  const path = _activeFilePath;
+  if (!path) return _showOutput('AI', 'Open a file first');
+  if (!_editorView) return _showOutput('AI', 'No active editor');
+
+  let prompt = '';
+  if (action === 'custom') {
+    prompt = prompt || prompt('Ask AI about this code:');
+    if (!prompt) return;
+  }
+
+  _showOutput('AI', 'Thinking...');
+
+  try {
+    const res = await fetch(`${API}/ai`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({file_path: path, action, prompt}),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text.includes('No AI endpoint') ? 'No AI endpoint configured. Add one in Settings.' : text);
+    }
+    const data = await res.json();
+    _showOutput(data.model ? `AI (${data.model})` : 'AI', data.response || '(empty response)');
+  } catch (e) {
+    _showOutput('AI', e.message);
+  }
 }
 
 function _scheduleAutoSave(path, content) {
