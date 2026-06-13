@@ -4,7 +4,7 @@ import os
 
 from src.env_compat import getenv as _getenv_compat
 
-APP_VERSION = "0.1.0-dev"
+APP_VERSION = "0.1.0"
 
 # Base paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/"

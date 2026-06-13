@@ -1,6 +1,6 @@
 [project]
 name = "lodestar"
-version = "0.1.0-dev"
+version = "0.1.0"
 description = "Self-hosted AI for everyone -- your own private workspace, guided by your own star, running on the hardware you already have."
 requires-python = ">=3.11"
 
