@@ -83,6 +83,30 @@ BENCH_MEMORY_LIMIT=1g BENCH_CPU_LIMIT=1.0 venv/bin/python scripts/bench_harness.
 | Peak RSS | 186 MB | 187 MB | 378 MB | 365 MB |
 | Idle CPU | 1.0% | 1.0% | 1.0% | 1.0% |
 
+### Final pre-release verification (lite mode, 3 runs)
+
+Re-run of `scripts/bench_harness.py --mode=lite` on the release branch,
+3 consecutive runs (same machine as above):
+
+| Run | Cold start | Idle RSS (30s) | Peak RSS (load) | Idle CPU (60s) |
+|---|---|---|---|---|
+| 1 | 3.0s | 187,316 KB (183 MB) | 192,276 KB (188 MB) | 1.0% |
+| 2 | 3.0s | 189,096 KB (185 MB) | 191,832 KB (187 MB) | 1.0% |
+| 3 | 3.0s | 189,728 KB (185 MB) | 190,888 KB (186 MB) | 1.0% |
+| **min** | **3.0s** | 187,316 KB | 190,888 KB | 1.0% |
+| **max** | **3.0s** | 189,728 KB | 192,276 KB | 1.0% |
+| **avg** | **3.0s** | 188,713 KB (184 MB) | 191,665 KB (187 MB) | 1.0% |
+
+Cold start improved from 3.5s (Phase 5) to 3.0s, an improvement of 0.5s.
+The harness reports cold start at 0.5s polling resolution, so the true
+value is somewhere in (2.5s, 3.0s]. This is right at the <3s target
+boundary — close enough that we consider it met in practice, but it is
+not a comfortable margin. The remaining time is dominated by Python
+interpreter startup and module imports (FastAPI/uvicorn/SQLite-vec init)
+rather than anything specific to Lodestar's own code; further reduction
+would require deferring heavier imports (e.g. embedding model loading)
+until first use.
+
 ### Thresholds (CI regression gate)
 
 | Target | Lite | Full |
