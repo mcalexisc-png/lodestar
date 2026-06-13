@@ -36746,11 +36746,30 @@ body.theme-frosted .modal {
 .code-git-msg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .code-snippets-toolbar { margin-bottom: 8px; }
-.code-snippet-item { padding: 8px; margin-bottom: 4px; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }
+.code-snippet-item { padding: 8px; margin-bottom: 4px; border: 1px solid var(--border); border-radius: 4px; }
 .code-snippet-item:hover { background: color-mix(in srgb, var(--fg) 4%, transparent); }
-.code-snippet-name { font-weight: 600; font-size: 13px; }
-.code-snippet-lang { font-size: 11px; opacity: .5; text-transform: uppercase; }
+.code-snippet-header { display: flex; align-items: center; gap: 8px; }
+.code-snippet-name { font-weight: 600; font-size: 13px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.code-snippet-lang { font-size: 11px; opacity: .5; text-transform: uppercase; flex-shrink: 0; }
 .code-snippet-body { margin-top: 4px; font-size: 12px; font-family: monospace; white-space: pre-wrap; opacity: .7; }
+.code-snippet-actions { display: flex; gap: 4px; margin-top: 6px; }
+.code-snippet-action {
+  background: none; border: 1px solid var(--border); color: var(--fg);
+  font-size: 10px; padding: 1px 8px; border-radius: 3px; cursor: pointer; opacity: .5;
+  transition: opacity .15s;
+}
+.code-snippet-action:hover { opacity: 1; }
+
+.code-snippet-form { padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+.code-snippet-input {
+  background: var(--bg); border: 1px solid var(--border); color: var(--fg);
+  padding: 6px 8px; border-radius: 4px; font-size: 12px;
+}
+.code-snippet-textarea {
+  background: var(--bg); border: 1px solid var(--border); color: var(--fg);
+  padding: 6px 8px; border-radius: 4px; font-size: 12px; font-family: monospace;
+  resize: vertical; min-height: 80px;
+}
 
 .code-main {
   display: flex;

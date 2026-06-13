@@ -561,16 +561,42 @@ function _formatRunOutput(data) {
   _showOutput('Run', out);
 }
 
-function _showNewSnippetDialog() {
-  const name = prompt('Snippet name:');
-  if (!name) return;
-  const body = prompt('Snippet body:');
-  if (!body) return;
-  fetch(`${API}/snippets`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({name, body}),
-  }).then(() => _loadSnippets()).catch(e => _showOutput('Snippets', e.message));
+function _showSnippetForm(editData) {
+  const panel = document.getElementById('code-snippets-panel');
+  if (!panel) return;
+  const d = editData || {};
+  const name = d.name || '';
+  const body = d.body || '';
+  const lang = d.language || '';
+  const id = d.id || '';
+  panel.innerHTML = `
+    <div class="code-snippets-toolbar">
+      <button class="code-git-btn" id="code-snippet-back-btn">${id ? 'Back' : 'Cancel'}</button>
+    </div>
+    <div class="code-snippet-form">
+      <input class="code-snippet-input" id="code-snippet-form-name" placeholder="Snippet name" value="${_esc(name)}" />
+      <input class="code-snippet-input" id="code-snippet-form-lang" placeholder="Language (e.g. py, js)" value="${_esc(lang)}" />
+      <textarea class="code-snippet-textarea" id="code-snippet-form-body" placeholder="Snippet body..." rows="8">${_esc(body)}</textarea>
+      <button class="code-git-btn" id="code-snippet-form-save">${id ? 'Update' : 'Save'}</button>
+    </div>
+  `;
+  document.getElementById('code-snippet-back-btn')?.addEventListener('click', _loadSnippets);
+  document.getElementById('code-snippet-form-save')?.addEventListener('click', async () => {
+    const n = document.getElementById('code-snippet-form-name').value.trim();
+    const b = document.getElementById('code-snippet-form-body').value.trim();
+    const l = document.getElementById('code-snippet-form-lang').value.trim();
+    if (!n || !b) return;
+    try {
+      if (id) {
+        await fetch(`${API}/snippets/${id}`, {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name: n, body: b, language: l})});
+      } else {
+        await fetch(`${API}/snippets`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name: n, body: b, language: l})});
+      }
+      _loadSnippets();
+    } catch (e) {
+      _showOutput('Snippets', e.message);
+    }
+  });
 }
 
 async function _loadGitStatus() {
@@ -660,13 +686,21 @@ async function _loadSnippets() {
 }
 
 function _renderSnippets(snippets) {
-  const items = snippets.map(s =>
-    `<div class="code-snippet-item" data-id="${s.id}">
-      <div class="code-snippet-name">${_esc(s.name)}</div>
-      <div class="code-snippet-lang">${_esc(s.language || '')}</div>
-      <pre class="code-snippet-body">${_esc(s.body.slice(0, 200))}</pre>
-    </div>`
-  ).join('');
+  const items = snippets.map(s => {
+    const preview = s.body.slice(0, 120);
+    return `<div class="code-snippet-item" data-id="${s.id}">
+      <div class="code-snippet-header">
+        <span class="code-snippet-name">${_esc(s.name)}</span>
+        <span class="code-snippet-lang">${_esc(s.language || '')}</span>
+      </div>
+      <pre class="code-snippet-body">${_esc(preview)}${s.body.length > 120 ? '…' : ''}</pre>
+      <div class="code-snippet-actions">
+        <button class="code-snippet-action" data-action="insert" data-id="${s.id}">Insert</button>
+        <button class="code-snippet-action" data-action="edit" data-id="${s.id}">Edit</button>
+        <button class="code-snippet-action" data-action="delete" data-id="${s.id}">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
   return `
     <div class="code-snippets-toolbar">
       <button class="code-git-btn" id="code-snippet-new-btn">+ New snippet</button>
@@ -676,7 +710,38 @@ function _renderSnippets(snippets) {
 }
 
 function _wireSnippetButtons() {
-  document.getElementById('code-snippet-new-btn')?.addEventListener('click', _showNewSnippetDialog);
+  document.getElementById('code-snippet-new-btn')?.addEventListener('click', () => _showSnippetForm());
+  document.querySelectorAll('.code-snippet-action').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const action = btn.dataset.action;
+      if (action === 'insert') {
+        if (!_editorView) return _showOutput('Snippets', 'Open a file in the editor first');
+        try {
+          const res = await fetch(`${API}/snippets`);
+          const data = await res.json();
+          const snippet = data.snippets.find(s => String(s.id) === id);
+          if (!snippet) return;
+          _editorView.dispatch({
+            changes: {from: _editorView.state.selection.main.head, insert: snippet.body},
+          });
+        } catch (e) { _showOutput('Snippets', e.message); }
+      } else if (action === 'edit') {
+        try {
+          const res = await fetch(`${API}/snippets`);
+          const data = await res.json();
+          const snippet = data.snippets.find(s => String(s.id) === id);
+          if (snippet) _showSnippetForm(snippet);
+        } catch (e) { _showOutput('Snippets', e.message); }
+      } else if (action === 'delete') {
+        if (!confirm('Delete this snippet?')) return;
+        try {
+          await fetch(`${API}/snippets/${id}`, {method: 'DELETE'});
+          _loadSnippets();
+        } catch (e) { _showOutput('Snippets', e.message); }
+      }
+    });
+  });
 }
 
 async function _indexProject() {
