@@ -726,6 +726,10 @@ app.include_router(setup_api_token_routes())
 
 logger.info("Webhook & API token routes initialized")
 
+# Code Workspace — file tree, editor, execution, snippets
+from routes.code_routes import setup_code_routes
+app.include_router(setup_code_routes())
+
 # Notes (Google Keep-style notes/todos)
 from routes.note_routes import setup_note_routes
 app.include_router(setup_note_routes(task_scheduler))
@@ -805,6 +809,14 @@ async def serve_memory(request: Request):
 
 @app.get("/gallery")
 async def serve_gallery(request: Request):
+    return await serve_index(request)
+
+@app.get("/code")
+async def serve_code(request: Request):
+    return await serve_index(request)
+
+@app.get("/snippets")
+async def serve_snippets(request: Request):
     return await serve_index(request)
 
 @app.get("/tasks")

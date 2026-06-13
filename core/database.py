@@ -2303,6 +2303,11 @@ def archive_session(session_id: str):
             return True
     return False
 
+# Import code workspace models so their tables are registered with Base.metadata
+# before create_all() runs. This import is here (not at module top) to avoid
+# circular imports — core.database.Base must be defined first.
+from src.code_workspace import models as _code_workspace_models  # noqa: F811
+
 # Initialize the database by creating all tables
 
 
