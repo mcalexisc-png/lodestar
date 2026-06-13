@@ -1,3 +1,50 @@
+[project]
+name = "lodestar"
+version = "0.1.0-dev"
+description = "Self-hosted AI for everyone -- your own private workspace, guided by your own star, running on the hardware you already have."
+requires-python = ">=3.11"
+
+# In-process plugin entry points (Tier 2). Third-party plugins declare their own
+# `lodestar.tools` entry point in their package metadata; this registers the
+# bundled example. When the app runs from source (not pip-installed), the plugin
+# loader also discovers bundled plugins by scanning the repo `plugins/` dir, so
+# the example works either way.
+[project.entry-points."lodestar.tools"]
+text_stats = "plugins.lodestar_textstats:manifest"
+file_search = "plugins.lodestar_filesearch:manifest"
+csv_read = "plugins.lodestar_csv:manifest"
+datetime_tool = "plugins.lodestar_datetime:manifest"
+git_tool = "plugins.lodestar_git:manifest"
+sqlite_query = "plugins.lodestar_sqlquery:manifest"
+rss_read = "plugins.lodestar_rss:manifest"
+
+# Optional extras group for lightweight agent tools that need a small extra
+# dependency. NOT installed by default (keeps lite/core lean). The RSS reader
+# plugin lazy-imports feedparser and degrades to a clear "install to use"
+# message when it's absent.
+[project.optional-dependencies]
+tools = ["feedparser"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+# Start small: undefined names and unused imports/variables. The codebase
+# has pre-existing findings under this set (see CI's lint job, which is
+# informational for now) — expand the rule set only after those are
+# triaged, to avoid a wall of unrelated noise on unrelated PRs.
+select = ["F"]
+
+[tool.mypy]
+python_version = "3.11"
+# Informational only for now (see CI's typecheck job): the codebase predates
+# type annotations in most modules. Enable incrementally per-module via
+# `[[tool.mypy.overrides]]` as files are annotated, rather than fighting the
+# whole tree at once.
+ignore_missing_imports = true
+check_untyped_defs = false
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
@@ -15,4 +62,8 @@ markers = [
     "area_helpers: self-tests for the shared test helpers in tests/helpers/",
     "area_unit: pure parser / utility tests that do not clearly belong elsewhere",
     "area_uncategorized: tests not yet matched by the taxonomy (fallback)",
+    # Fast-lane marker (issue #3443). Opt-in and orthogonal to the area_*/sub_*
+    # taxonomy. The fast lane runs `not slow`; mark a test slow only with
+    # duration evidence (see tests/run_focus.py --durations and tests/README.md).
+    "slow: opt-in marker for known-slow tests; excluded by the fast lane (not slow)",
 ]

@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api/mcp", tags=["mcp"])
 
 
 def _mcp_oauth_base_dir() -> Path:
-    """Directory that may contain OAuth files managed by Odysseus."""
+    """Directory that may contain OAuth files managed by Lodestar."""
     return Path(MCP_OAUTH_DIR).resolve(strict=False)
 
 
@@ -108,8 +108,43 @@ def _load_disabled_map():
         db.close()
 
 
+def _load_tool_policy():
+    """Load the combined per-server tool access policy from the DB.
+
+    Returns {server_id: {"disabled": set[str], "allowed": set[str] | None}}.
+    ``allowed=None`` means no allowlist (all non-disabled tools permitted).
+    Used as the runtime enforcement policy injected into McpManager, so the
+    admin-configured allow/deny lists are enforced at the execution boundary,
+    not only by hiding tools from the prompt.
+    """
+    db = SessionLocal()
+    try:
+        policy = {}
+        for srv in db.query(McpServer).all():
+            disabled = set()
+            allowed = None
+            if srv.disabled_tools:
+                try:
+                    disabled = set(json.loads(srv.disabled_tools) or [])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            if srv.allowed_tools is not None:
+                try:
+                    allowed = set(json.loads(srv.allowed_tools) or [])
+                except (json.JSONDecodeError, TypeError):
+                    allowed = set()
+            if disabled or allowed is not None:
+                policy[srv.id] = {"disabled": disabled, "allowed": allowed}
+        return policy
+    finally:
+        db.close()
+
+
 def setup_mcp_routes(mcp_manager: McpManager):
     """Setup MCP routes with the provided manager."""
+
+    # Enforce the admin per-tool allow/deny policy at the execution boundary.
+    mcp_manager.set_tool_policy_provider(_load_tool_policy)
 
     @router.get("/servers")
     def list_servers(request: Request):
@@ -417,6 +452,38 @@ def setup_mcp_routes(mcp_manager: McpManager):
         finally:
             db.close()
 
+    @router.patch("/servers/{server_id}/allowlist")
+    async def update_allowed_tools(server_id: str, request: Request):
+        """Set or clear the per-tool allowlist for a server (admin only).
+
+        Expects JSON body:
+          {"allowed": ["tool_a", "tool_b"]}  -> only these tools may run
+          {"allowed": null}                  -> clear the allowlist (all allowed)
+
+        Enforced at runtime by McpManager via the injected tool policy, in
+        addition to hiding non-allowlisted tools from the LLM prompt.
+        """
+        require_admin(request)
+        db = SessionLocal()
+        try:
+            srv = db.query(McpServer).filter(McpServer.id == server_id).first()
+            if not srv:
+                raise HTTPException(404, "Server not found")
+
+            body = await request.json()
+            allowed = body.get("allowed", None)
+            if allowed is None:
+                srv.allowed_tools = None
+                db.commit()
+                return {"id": server_id, "allowlist": None}
+            if not isinstance(allowed, list):
+                raise HTTPException(400, "allowed must be a list of tool names or null")
+            srv.allowed_tools = json.dumps(allowed)
+            db.commit()
+            return {"id": server_id, "allowed_count": len(allowed)}
+        finally:
+            db.close()
+
     # ── OAuth flow for Google MCP servers ──────────────────────────
 
     @router.get("/oauth/authorize/{server_id}")
@@ -482,7 +549,7 @@ def setup_mcp_routes(mcp_manager: McpManager):
         if resolve_pending(state, code):
             return HTMLResponse(_oauth_result_page(
                 "Authorization Successful",
-                "The MCP server is connecting. You can close this window and return to Odysseus.",
+                "The MCP server is connecting. You can close this window and return to Lodestar.",
                 success=True,
             ))
         # Legacy Google path: state is the server_id
@@ -508,7 +575,7 @@ def setup_mcp_routes(mcp_manager: McpManager):
         if state and resolve_pending(state, code):
             return HTMLResponse(_oauth_result_page(
                 "Authorization Successful",
-                "The MCP server is connecting. You can close this window and return to Odysseus.",
+                "The MCP server is connecting. You can close this window and return to Lodestar.",
                 success=True,
             ))
 
@@ -612,7 +679,7 @@ def _oauth_authorize_page(auth_url: str, server_id: str, host: str) -> str:
     host = html.escape(host, quote=True)
     return f"""<!DOCTYPE html>
 <html><head>
-<meta charset="UTF-8"><title>Authorize — Odysseus</title>
+<meta charset="UTF-8"><title>Authorize — Lodestar</title>
 <style>
   body {{ font-family: 'Fira Code', monospace; background: #0f0f0f; color: #e0e0e0;
     display: flex; justify-content: center; align-items: center; min-height: 100vh; }}

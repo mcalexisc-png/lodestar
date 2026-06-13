@@ -14,6 +14,7 @@ from dateutil.rrule import rrulestr
 from core.database import SessionLocal, CalendarCal, CalendarEvent
 from src.auth_helpers import require_user
 from src.upload_limits import read_upload_limited, ICS_MAX_BYTES
+from src.env_compat import getenv as _getenv_compat
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +38,11 @@ def _ics_naive_dtstart(dt):
 # Single-user fallback identity. Used only when:
 #   1. The app is configured for single-user (no auth middleware), AND
 #   2. The request didn't resolve to an authenticated user.
-# Override at deploy time via `ODYSSEUS_FALLBACK_OWNER` env var. In a real
-# multi-user install set `ODYSSEUS_SINGLE_USER=0` so unauthenticated requests
+# Override at deploy time via `LODESTAR_FALLBACK_OWNER` env var. In a real
+# multi-user install set `LODESTAR_SINGLE_USER=0` so unauthenticated requests
 # are rejected instead of silently writing to this address.
-import os as _os
-FALLBACK_OWNER = _os.environ.get("ODYSSEUS_FALLBACK_OWNER", "owner@localhost")
-_SINGLE_USER_MODE = _os.environ.get("ODYSSEUS_SINGLE_USER", "1") != "0"
+FALLBACK_OWNER = _getenv_compat("LODESTAR_FALLBACK_OWNER", "ODYSSEUS_FALLBACK_OWNER", "owner@localhost")
+_SINGLE_USER_MODE = _getenv_compat("LODESTAR_SINGLE_USER", "ODYSSEUS_SINGLE_USER", "1") != "0"
 
 
 def _require_user(request: Request) -> str:
@@ -851,27 +851,26 @@ def setup_calendar_routes() -> APIRouter:
         from src.caldav_sync import sync_caldav
         return await sync_caldav(owner)
 
+
     @router.delete("/calendars/{cal_id}")
-    async def delete_calendar(cal_id: str, request: Request):
+    async def delete_calendar(request: Request, cal_id: str):
         owner = _require_user(request)
         db = SessionLocal()
         try:
-            cal = db.query(CalendarCal).filter(
-                CalendarCal.id == cal_id,
-                CalendarCal.owner == owner,
-            ).first()
-            if not cal:
-                raise HTTPException(404, "Calendar not found")
+            cal = _get_or_404_calendar(db, cal_id, owner)
+            db.query(CalendarEvent).filter(CalendarEvent.calendar_id == cal_id).delete()
             db.delete(cal)
             db.commit()
             return {"ok": True}
         except HTTPException:
             raise
         except Exception as e:
+            db.rollback()
             logger.error("Failed to delete calendar %s: %s", cal_id, e)
             raise HTTPException(500, "Failed to delete calendar")
         finally:
             db.close()
+
 
     @router.get("/calendars")
     async def list_calendars(request: Request):
@@ -1152,23 +1151,6 @@ def setup_calendar_routes() -> APIRouter:
         finally:
             db.close()
 
-    @router.delete("/calendars/{cal_id}")
-    async def delete_calendar(request: Request, cal_id: str):
-        owner = _require_user(request)
-        db = SessionLocal()
-        try:
-            cal = _get_or_404_calendar(db, cal_id, owner)
-            db.query(CalendarEvent).filter(CalendarEvent.calendar_id == cal_id).delete()
-            db.delete(cal)
-            db.commit()
-            return {"ok": True}
-        except HTTPException:
-            raise
-        except Exception as e:
-            db.rollback()
-            return {"error": str(e)}
-        finally:
-            db.close()
 
     # Hard cap on ICS upload (ICS_MAX_BYTES, default 10 MB). Loading the whole
     # file into memory is unavoidable with python-icalendar, so an unbounded
@@ -1326,7 +1308,7 @@ def setup_calendar_routes() -> APIRouter:
             lines = [
                 "BEGIN:VCALENDAR",
                 "VERSION:2.0",
-                "PRODID:-//Odysseus//Calendar//EN",
+                "PRODID:-//Lodestar//Calendar//EN",
                 f"X-WR-CALNAME:{_ics_escape(cal.name)}",
             ]
             for ev in events:

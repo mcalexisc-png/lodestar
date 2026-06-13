@@ -1,16 +1,28 @@
-# Odysseus
+# Lodestar
 
-> **Branch note:** `dev` is the default branch and contains the latest development changes, but it may be unstable. For the more stable curated branch, use [`main`](https://github.com/pewdiepie-archdaemon/odysseus/tree/main).
+> **Branch note:** `dev` is the default branch and contains the latest development changes, but it may be unstable. For the more stable curated branch, use [`main`](https://github.com/<you>/lodestar/tree/main).
 
 ```
-───────────────────────────────────────────────
- ⊹ ࣪ ˖ ૮( ˶ᵔ ᵕ ᵔ˶ )っ  Odysseus vers. 1.0
-───────────────────────────────────────────────
+              .                 *
+       *           .                      .
+                 \   .   |   .   /
+        .          \      |      /            *
+                    \  .  |  .  /
+     *  . ─────────  *  L O D E S T A R  *  ───────────  .
+                    /  '  |  '  \
+        *          /      |      \          .
+                 /   '    |    '   \
+       .            *           .              *
+            steer your own AI — by your own star
 ```
 
-![Odysseus](docs/odysseus.jpg)
+Self-hosted AI for everyone — your own private workspace, guided by your own
+star, running on the hardware you already have. Local-first, privacy-first,
+no telemetry, no trojan.
 
-A self-hosted AI workspace -- meant to be the self-hosted version of the UI experience you get from ChatGPT and Claude. But with more jank and fun. Running on your own hardware, with your own data -- local-first, privacy-first, and no trojan.
+> Lodestar is a fork of [Odysseus](https://github.com/pewdiepie-archdaemon/odysseus)
+> by PewDiePie (Felix Kjellberg). See [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md)
+> and [NOTICE](NOTICE) for full credit.
 
 ## Features
   - **Chat** -- chat with any local model or API; adding them is super simple.<br>　<sub>vLLM · llama.cpp · Ollama · OpenRouter · OpenAI · GitHub Copilot</sub>
@@ -25,6 +37,15 @@ A self-hosted AI workspace -- meant to be the self-hosted version of the UI expe
   - **Calendar** -- Local-first calendar with CalDAV sync to Radicale / Nextcloud / Apple / Fastmail.<br>　<sub>CalDAV pull · .ics import/export · per-calendar colors · agent-aware</sub>
   - **Works on mobile** -- looks and runs great on your phone, not just desktop.<br>　<sub>responsive · installable (PWA) · touch gestures</sub>
   - **Extras** -- more to explore, happy if you give it a go!<br>　<sub>image editor · theme editor · file uploads (vision + PDF) · web search · presets · sessions · 2FA</sub>
+
+## Built to run on the hardware you already have
+
+Low-end performance is a first-class goal, not an afterthought. Lodestar aims
+to run comfortably on modest hardware -- old laptops, mini PCs, a spare
+desktop -- without requiring a beefy GPU. For machines with limited RAM/CPU
+and no GPU, run `./install-lite.sh` (or `install-lite.ps1` on Windows) -- see
+[Lite install](#lite-install-low-end-hardware) below. See `LODESTAR_LITE` in
+[Configuration](#configuration) for what the flag changes.
 
 ## Demo
 A full, hover-to-play tour lives on the landing page (`docs/index.html`).
@@ -51,9 +72,9 @@ Defaults work out of the box: clone, run, then configure models/search/email
 inside **Settings**. Only edit `.env` for deployment-level overrides like
 `APP_BIND`, `APP_PORT`, `AUTH_ENABLED`, `DATABASE_URL`, or a pre-seeded admin password.
 
-On first setup, Odysseus creates an admin account (`admin` unless
-`ODYSSEUS_ADMIN_USER` is set) and prints a temporary password in the terminal.
-For Docker installs, the same line is in `docker compose logs odysseus`.
+On first setup, Lodestar creates an admin account (`admin` unless
+`LODESTAR_ADMIN_USER` is set) and prints a temporary password in the terminal.
+For Docker installs, the same line is in `docker compose logs lodestar`.
 Use that for the first login, then change it in **Settings**.
 
 Contributing? See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, testing, and
@@ -61,8 +82,8 @@ pull request guidelines.
 
 ### Docker (recommended)
 ```bash
-git clone https://github.com/pewdiepie-archdaemon/odysseus.git
-cd odysseus
+git clone https://github.com/<you>/lodestar.git
+cd lodestar
 cp .env.example .env       # optional, but recommended for explicit defaults
 docker compose up -d --build
 ```
@@ -75,8 +96,8 @@ only when you intentionally want LAN/reverse-proxy access.
 
 ### Native Linux / macOS
 ```bash
-git clone https://github.com/pewdiepie-archdaemon/odysseus.git
-cd odysseus
+git clone https://github.com/<you>/lodestar.git
+cd lodestar
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -88,20 +109,53 @@ downloads and serves. The app itself is lightweight; local model serving is the
 heavy part and depends on the model, runtime, GPU, and VRAM, so small hosts can
 connect to API or remote model servers instead. Use `--host 0.0.0.0` only when you intentionally want LAN/reverse-proxy access.
 
+### Lite install (low-end hardware)
+For old laptops, mini PCs, or any machine with limited RAM/CPU and no GPU,
+use the lite installer instead. It skips the ChromaDB/ONNX vector-search
+stack (`chromadb-client`, `fastembed`, `onnxruntime`) at install time and
+launches with `LODESTAR_LITE=true`, which:
+- falls back to keyword search for memory and personal-doc RAG instead of
+  ChromaDB vector search
+- skips auto-starting the Playwright/browser MCP server
+- uses smaller SQLite cache/mmap sizes
+- runs a single uvicorn worker
+
+Every feature still works -- semantic search just degrades to keyword search.
+
+**Linux / macOS:**
+```bash
+git clone https://github.com/<you>/lodestar.git
+cd lodestar
+./install-lite.sh
+```
+
+**Windows:**
+```powershell
+git clone https://github.com/<you>/lodestar.git
+cd lodestar
+powershell -ExecutionPolicy Bypass -File .\install-lite.ps1
+```
+
+Both scripts create a venv, install the lite dependency set, run first-run
+setup (prints the admin password), and start the server on
+`http://127.0.0.1:7000`. Safe to re-run. To switch a full install to lite
+mode (or back) without reinstalling, set `LODESTAR_LITE=true` (or `false`)
+in `.env` and restart.
+
 ### Apple Silicon
 Docker on macOS cannot use the Metal GPU. For GPU-accelerated Cookbook on an
-M-series Mac, run Odysseus natively:
+M-series Mac, run Lodestar natively:
 
 ```bash
-git clone https://github.com/pewdiepie-archdaemon/odysseus.git
-cd odysseus
+git clone https://github.com/<you>/lodestar.git
+cd lodestar
 ./start-macos.sh
 ```
 
 It launches at `http://127.0.0.1:7860`. To expose it to your phone over a trusted LAN/VPN such as Tailscale, bind all interfaces:
 
 ```bash
-ODYSSEUS_HOST=0.0.0.0 ./start-macos.sh
+LODESTAR_HOST=0.0.0.0 ./start-macos.sh
 # then open http://<tailscale-ip>:7860
 ```
 
@@ -118,8 +172,8 @@ expose this port directly to the public internet. To build a clickable app wrapp
 <details>
 <summary>Cookbook, GPU, Ollama, and troubleshooting notes</summary>
 
-**Docker bundled services.** Compose starts Odysseus, ChromaDB, SearXNG, and
-ntfy. Odysseus and the bundled service ports bind to `127.0.0.1` by default, so
+**Docker bundled services.** Compose starts Lodestar, ChromaDB, SearXNG, and
+ntfy. Lodestar and the bundled service ports bind to `127.0.0.1` by default, so
 they are reachable from the host but not exposed to your LAN/public internet
 unless you opt in.
 
@@ -129,7 +183,7 @@ serve engines live in `./data/local` (`~/.local` in the container), so they
 survive container recreation.
 
 **Remote servers.** In **Cookbook -> Settings -> Servers**, generate the
-Odysseus SSH key and add the public key to the remote server's
+Lodestar SSH key and add the public key to the remote server's
 `~/.ssh/authorized_keys`. From the host you can also run:
 
 ```bash
@@ -137,7 +191,7 @@ ssh-copy-id -i data/ssh/id_ed25519.pub user@server
 ```
 
 **Docker GPU overlays.** CPU-only users can skip this section. Cookbook can
-only detect GPUs that Docker exposes to the container — if the host runtime or
+only detect GPUs that Docker exposes to the container -- if the host runtime or
 device passthrough is not configured, Cookbook sees the iGPU, another card, or
 CPU instead of your intended GPU.
 
@@ -209,22 +263,22 @@ source of truth; the standalone files mirror them for single-file deployments.
 Verify after enabling either overlay:
 
 ```bash
-docker compose exec odysseus nvidia-smi -L   # NVIDIA
-docker compose exec odysseus sh -lc 'test -e /dev/kfd && test -d /dev/dri && ls -l /dev/kfd /dev/dri/renderD*'  # AMD
+docker compose exec lodestar nvidia-smi -L   # NVIDIA
+docker compose exec lodestar sh -lc 'test -e /dev/kfd && test -d /dev/dri && ls -l /dev/kfd /dev/dri/renderD*'  # AMD
 ```
 
 > **GPU passthrough ≠ llama.cpp CUDA.** `nvidia-smi` passing inside the
 > container confirms Docker GPU access, but llama.cpp also needs `cudart` and
 > the CUDA Toolkit at runtime. If Cookbook logs show `Unable to find cudart
 > library`, `Could NOT find CUDAToolkit`, `CUDA Toolkit not found`, or
-> tensors/layers assigned to CPU, that is a Cookbook/llama.cpp build issue —
+> tensors/layers assigned to CPU, that is a Cookbook/llama.cpp build issue --
 > not a Docker passthrough failure. Re-install the serve engine via
 > **Cookbook → Dependencies** to get a CUDA-enabled build.
 >
 > The same split applies to AMD/ROCm: seeing `/dev/kfd` and `/dev/dri` inside
 > the container confirms device passthrough, not ROCm userspace or a
 > ROCm-enabled vLLM/llama.cpp build. `rocm-smi` and `rocminfo` are not expected
-> inside the slim Odysseus image.
+> inside the slim Lodestar image.
 
 **Ollama with Docker.** If Ollama runs on the host, add this endpoint in
 Settings:
@@ -239,25 +293,25 @@ Ollama must listen outside its own loopback interface:
 OLLAMA_HOST=0.0.0.0:11434 ollama serve
 ```
 
-This connects Odysseus in Docker to an Ollama server that is already running on
+This connects Lodestar in Docker to an Ollama server that is already running on
 your host machine; it does not start Ollama inside the container.
 `host.docker.internal` is Docker's hostname for the host machine from inside the
 container. Cookbook **Serve** is a separate workflow for serving downloaded
-models through Odysseus/llama.cpp, so Windows users with an existing Ollama
+models through Lodestar/llama.cpp, so Windows users with an existing Ollama
 install usually only need to add the endpoint in Settings.
 
 **Useful checks.**
 
 ```bash
 docker compose ps
-docker compose logs --tail=120 odysseus
-docker compose logs odysseus | grep -E 'ChromaDB|MemoryVectorStore|DEGRADED'
+docker compose logs --tail=120 lodestar
+docker compose logs lodestar | grep -E 'ChromaDB|MemoryVectorStore|DEGRADED'
 ```
 
 **macOS details.** `start-macos.sh` installs Homebrew deps, creates the venv,
 runs setup, and starts uvicorn on port `7860` because AirPlay often holds
 `7000`. It uses llama.cpp/Ollama for Metal. vLLM/SGLang are CUDA/ROCm-only and
-do not run on macOS. MLX-only models are not served by Odysseus.
+do not run on macOS. MLX-only models are not served by Lodestar.
 
 </details>
 
@@ -267,16 +321,16 @@ do not run on macOS. MLX-only models are not served by Odysseus.
 server; safe to re-run):
 
 ```powershell
-git clone https://github.com/pewdiepie-archdaemon/odysseus.git
-cd odysseus
+git clone https://github.com/<you>/lodestar.git
+cd lodestar
 powershell -ExecutionPolicy Bypass -File .\launch-windows.ps1
 ```
 
 Or do it by hand:
 
 ```powershell
-git clone https://github.com/pewdiepie-archdaemon/odysseus.git
-cd odysseus
+git clone https://github.com/<you>/lodestar.git
+cd lodestar
 py -3.11 -m venv venv
 venv\Scripts\Activate.ps1
 pip install -r requirements.txt
@@ -292,7 +346,7 @@ email, calendar, deep research) runs fully native. For full **Cookbook** backgro
 model downloads and the agent shell tool, also install
 [Git for Windows](https://git-scm.com/download/win) (provides `bash.exe`).
 Local GPU *serving* of vLLM/SGLang needs Linux/WSL2; for a local model on Windows,
-[Ollama](https://ollama.com/download) is the easiest path — point Odysseus at
+[Ollama](https://ollama.com/download) is the easiest path -- point Lodestar at
 `http://localhost:11434/v1` in Settings.
 
 Open `http://localhost:7000`, log in with the generated admin password,
@@ -301,7 +355,7 @@ and configure everything else inside **Settings**.
 ## Troubleshooting & Advanced Setup
 
 ### `chromadb-client` conflicts with embedded ChromaDB
-If `chromadb-client` (the lightweight HTTP-only package) is installed alongside the full `chromadb` package, Odysseus starts but ChromaDB silently falls back to HTTP-only mode and fails.
+If `chromadb-client` (the lightweight HTTP-only package) is installed alongside the full `chromadb` package, Lodestar starts but ChromaDB silently falls back to HTTP-only mode and fails.
 
 **Fix:** uninstall `chromadb-client` and force-reinstall the full package:
 ```bash
@@ -310,8 +364,8 @@ If `chromadb-client` (the lightweight HTTP-only package) is installed alongside 
 ```
 
 ### HTTPS + LAN/Tailscale exposure
-To expose Odysseus on a local network or Tailscale with HTTPS:
-1. Change the bind address to `0.0.0.0` in `.env` (`APP_BIND=0.0.0.0` or `ODYSSEUS_HOST=0.0.0.0`).
+To expose Lodestar on a local network or Tailscale with HTTPS:
+1. Change the bind address to `0.0.0.0` in `.env` (`APP_BIND=0.0.0.0` or `LODESTAR_HOST=0.0.0.0`).
 2. Generate a locally-trusted cert for your LAN/Tailscale IPs using [mkcert](https://github.com/FiloSottile/mkcert):
    ```bash
    mkcert -install
@@ -321,7 +375,7 @@ To expose Odysseus on a local network or Tailscale with HTTPS:
    ```bash
    python -m uvicorn app:app --host 0.0.0.0 --port 7000 --ssl-certfile=cert.pem --ssl-keyfile=key.pem
    ```
-4. Install the `mkcert` CA on any other device you want to access Odysseus from (e.g., for iOS, email the `rootCA.pem` to yourself, install the profile, and trust it in Certificate Trust Settings).
+4. Install the `mkcert` CA on any other device you want to access Lodestar from (e.g., for iOS, email the `rootCA.pem` to yourself, install the profile, and trust it in Certificate Trust Settings).
 
 ### Optional Dependencies
 `requirements-optional.txt` contains packages that unlock extra features. It is not installed by default.
@@ -329,22 +383,22 @@ To expose Odysseus on a local network or Tailscale with HTTPS:
 | Package | Feature unlocked |
 |---------|-----------------|
 | `faster-whisper` | Local speech-to-text (microphone -> text) via the "local" STT provider. |
-| `duckduckgo-search` | DuckDuckGo as a search provider option. |
+| `ddgs` | DuckDuckGo as a search provider option. |
 | `PyMuPDF` | PDF page rendering in the side viewer panel and form-filling. (Note: AGPL-3.0) |
 | `markitdown` | Office/EPUB document text extraction (converts .docx/.xlsx/.pptx/.xls/.epub to Markdown). |
 
 ### Outlook / Office 365 email
-Odysseus email accounts currently use IMAP/SMTP username-password auth. Outlook
+Lodestar email accounts currently use IMAP/SMTP username-password auth. Outlook
 and Microsoft 365 generally require OAuth instead, so normal Microsoft mailbox
 passwords will fail. See [docs/email-outlook.md](docs/email-outlook.md) for the
 current limitation and the planned integration direction.
 
 ## Security Notes
-Odysseus is a self-hosted workspace with powerful local tools: shell access, file uploads, model downloads, web research, email/calendar integrations, and API tokens. Treat it like an admin console.
+Lodestar is a self-hosted workspace with powerful local tools: shell access, file uploads, model downloads, web research, email/calendar integrations, and API tokens. Treat it like an admin console.
 
 - Keep `AUTH_ENABLED=true` for any network-accessible deployment.
 - Keep `LOCALHOST_BYPASS=false` outside local development.
-- Use `SECURE_COOKIES=true` when Odysseus is served through HTTPS by a trusted reverse proxy or private access gateway.
+- Use `SECURE_COOKIES=true` when Lodestar is served through HTTPS by a trusted reverse proxy or private access gateway.
 - Do not expose it directly to the public internet without HTTPS and a trusted reverse proxy or private access layer.
 - Keep `.env`, `data/`, `logs/`, databases, uploads, generated media, backups, auth/session files, API keys, and model/provider tokens out of Git and private shares. They are ignored by default.
 - Review `data/auth.json` after first boot: disable open signup unless you intentionally want it, make only your own account admin, and keep demo/test accounts non-admin.
@@ -352,24 +406,24 @@ Odysseus is a self-hosted workspace with powerful local tools: shell access, fil
 - Rotate any API keys or tokens that were ever pasted into a shared chat, demo, screenshot, or log.
 - If you enable API tokens or webhooks, create separate tokens per integration and delete unused ones.
 - Prefer binding manual development runs to `127.0.0.1`; bind to `0.0.0.0` only when you intentionally want LAN/reverse-proxy access.
-- Keep ChromaDB, SearXNG, ntfy, Ollama, vLLM, llama.cpp, databases, and raw model/provider APIs internal-only. Expose only the authenticated Odysseus web/API entrypoint through your trusted proxy or private access layer.
+- Keep ChromaDB, SearXNG, ntfy, Ollama, vLLM, llama.cpp, databases, and raw model/provider APIs internal-only. Expose only the authenticated Lodestar web/API entrypoint through your trusted proxy or private access layer.
 - Before publishing a fork, run `git status --short` and confirm no private files from `.env`, `data/`, `logs/`, uploads, backups, or local databases are staged.
 
 ### Private or proxied deployments
-Odysseus serves plain HTTP on its app port. Docker Compose binds Odysseus and the bundled services to `127.0.0.1` by default, so a typical production/private setup is:
+Lodestar serves plain HTTP on its app port. Docker Compose binds Lodestar and the bundled services to `127.0.0.1` by default, so a typical production/private setup is:
 
-1. Keep Odysseus on localhost, for example `127.0.0.1:7000`.
+1. Keep Lodestar on localhost, for example `127.0.0.1:7000`.
 2. Terminate HTTPS at a trusted reverse proxy or private access gateway.
-3. Put the authenticated Odysseus web/API entrypoint behind that layer.
+3. Put the authenticated Lodestar web/API entrypoint behind that layer.
 4. Keep raw service and model ports internal-only.
 
-Cloudflare Access, Tailscale, Caddy, nginx, and Traefik can all fit this pattern; none are required by Odysseus. If your access layer reaches Odysseus on the same host, proxy to `http://127.0.0.1:7000` and keep `AUTH_ENABLED=true`, `LOCALHOST_BYPASS=false`, and `SECURE_COOKIES=true`.
+Cloudflare Access, Tailscale, Caddy, nginx, and Traefik can all fit this pattern; none are required by Lodestar. If your access layer reaches Lodestar on the same host, proxy to `http://127.0.0.1:7000` and keep `AUTH_ENABLED=true`, `LOCALHOST_BYPASS=false`, and `SECURE_COOKIES=true`.
 
 Common internal-only ports from the default docs/compose setup:
 
 | Port | Service |
 |---|---|
-| `7000` | Odysseus raw app port |
+| `7000` | Lodestar raw app port |
 | `8080` | SearXNG |
 | `8091` | ntfy |
 | `8100` | ChromaDB host port for manual/compose access |
@@ -397,25 +451,30 @@ Key settings:
 | `APP_PORT` | `7000` | Docker Compose host port for the web UI. |
 | `AUTH_ENABLED` | `true` | Enable/disable login |
 | `LOCALHOST_BYPASS` | `false` | Development-only auth bypass for loopback requests. Keep false for shared/network deployments. |
-| `SECURE_COOKIES` | `false` | Set true when serving Odysseus through HTTPS at a trusted proxy or private access gateway. |
+| `SECURE_COOKIES` | `false` | Set true when serving Lodestar through HTTPS at a trusted proxy or private access gateway. |
 | `DATABASE_URL` | `sqlite:///./data/app.db` | Database connection string |
 | `CHROMADB_HOST` | `localhost` | ChromaDB host for vector memory. Docker overrides this to `chromadb`. |
 | `CHROMADB_PORT` | `8100` | ChromaDB port for manual host runs. Docker overrides this to `8000`. |
 | `EMBEDDING_URL` | -- | OpenAI-compatible embeddings endpoint |
-| `ODYSSEUS_CHAT_UPLOAD_MAX_BYTES` | `10485760` | Chat/agent attachment cap in bytes. Raise for larger local PDFs or text documents. |
-| `ODYSSEUS_GALLERY_UPLOAD_MAX_BYTES` | `104857600` | Gallery image upload cap in bytes (100 MB). |
-| `ODYSSEUS_GALLERY_TRANSFORM_UPLOAD_MAX_BYTES` | `26214400` | Gallery transform input cap in bytes (25 MB). |
-| `ODYSSEUS_MEMORY_IMPORT_MAX_BYTES` | `10485760` | Memory import file cap in bytes (10 MB). |
-| `ODYSSEUS_PERSONAL_UPLOAD_MAX_BYTES` | `26214400` | Personal document upload cap in bytes (25 MB). |
-| `ODYSSEUS_EMAIL_COMPOSE_UPLOAD_MAX_BYTES` | `26214400` | Email compose attachment cap in bytes (25 MB). |
-| `ODYSSEUS_STT_MAX_AUDIO_BYTES` | `26214400` | Speech-to-text audio cap in bytes (25 MB). |
-| `ODYSSEUS_ICS_MAX_BYTES` | `10485760` | Calendar `.ics` import cap in bytes (10 MB). |
+| `LODESTAR_LITE` | `false` | Enable lite mode for low-end hardware: keyword-only memory/RAG (no ChromaDB), no Playwright/browser MCP, smaller SQLite caches. Set automatically by `install-lite.sh`/`.ps1`. |
+| `LODESTAR_CHAT_UPLOAD_MAX_BYTES` | `10485760` | Chat/agent attachment cap in bytes. Raise for larger local PDFs or text documents. |
+| `LODESTAR_GALLERY_UPLOAD_MAX_BYTES` | `104857600` | Gallery image upload cap in bytes (100 MB). |
+| `LODESTAR_GALLERY_TRANSFORM_UPLOAD_MAX_BYTES` | `26214400` | Gallery transform input cap in bytes (25 MB). |
+| `LODESTAR_MEMORY_IMPORT_MAX_BYTES` | `10485760` | Memory import file cap in bytes (10 MB). |
+| `LODESTAR_PERSONAL_UPLOAD_MAX_BYTES` | `26214400` | Personal document upload cap in bytes (25 MB). |
+| `LODESTAR_EMAIL_COMPOSE_UPLOAD_MAX_BYTES` | `26214400` | Email compose attachment cap in bytes (25 MB). |
+| `LODESTAR_STT_MAX_AUDIO_BYTES` | `26214400` | Speech-to-text audio cap in bytes (25 MB). |
+| `LODESTAR_ICS_MAX_BYTES` | `10485760` | Calendar `.ics` import cap in bytes (10 MB). |
 
 All upload-limit vars are validated (must be a positive integer) and optional; an invalid value fails fast at startup.
 
+> **Note:** The legacy `ODYSSEUS_*` names for these variables (e.g.
+> `ODYSSEUS_CHAT_UPLOAD_MAX_BYTES`) still work as deprecated aliases. A
+> one-line notice is logged at startup if a legacy name is used.
+
 ### Built-in MCP servers (optional setup)
 
-Odysseus auto-registers a few built-in MCP servers at startup. The npx-based ones (currently the browser server, `@playwright/mcp`) only start when their npm package is already in the local npx cache. If a package isn't cached, that server is skipped with a startup log message explaining what to do, so a fresh install does not block on a multi-minute npm download or hang if Playwright system deps are missing.
+Lodestar auto-registers a few built-in MCP servers at startup. The npx-based ones (currently the browser server, `@playwright/mcp`) only start when their npm package is already in the local npx cache. If a package isn't cached, that server is skipped with a startup log message explaining what to do, so a fresh install does not block on a multi-minute npm download or hang if Playwright system deps are missing.
 
 To enable the browser MCP (page navigation, screenshots, vision), run once:
 
@@ -423,7 +482,7 @@ To enable the browser MCP (page navigation, screenshots, vision), run once:
 npx -y @playwright/mcp@latest --version
 ```
 
-That installs `@playwright/mcp` plus Playwright (~300MB total). Restart Odysseus and the server will register at startup.
+That installs `@playwright/mcp` plus Playwright (~300MB total). Restart Lodestar and the server will register at startup.
 
 ## Architecture
 ```
@@ -440,30 +499,23 @@ docs/      landing page (index.html) + preview clips
 All user data lives in `data/` (gitignored): `app.db` (sessions, messages, documents),
 `memory.json`, `presets.json`, `uploads/`, `personal_docs/`, `chroma/`, `settings.json`.
 
-## Star History
-
-<a href="https://www.star-history.com/?repos=pewdiepie-archdaemon%2Fodysseus&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=pewdiepie-archdaemon/odysseus&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=pewdiepie-archdaemon/odysseus&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=pewdiepie-archdaemon/odysseus&type=date&legend=top-left" />
- </picture>
-</a>
-
 ## License
-AGPL-3.0-or-later -- see [LICENSE](LICENSE) and [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md).
+AGPL-3.0-or-later -- see [LICENSE](LICENSE), [NOTICE](NOTICE), and [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md).
+
+Lodestar is a fork of [Odysseus](https://github.com/pewdiepie-archdaemon/odysseus)
+by PewDiePie (Felix Kjellberg). Full credit to the original author and
+contributors -- see [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md) for details.
 
 ```
-                                  |
-                                 |||
-                                |||||
-                  |    |    |   |||||||
-                 )_)  )_)  )_)   ~|~
-                )___))___))___)\  |
-               )____)____)_____)\\|
-             _____|____|____|_____\\\__
-             \                       /
-       ~^~^~~^~^~~^~^~~^~^~~^~^~~^~^~~^~^~~^~^~
-               ~^~  all aboard!  ~^~
-       ~^~^~~^~^~~^~^~~^~^~~^~^~~^~^~~^~^~~^~^~
+              .                 *
+       *           .                      .
+                 \   .   |   .   /
+        .          \      |      /            *
+                    \  .  |  .  /
+     *  . ─────────  *  L O D E S T A R  *  ───────────  .
+                    /  '  |  '  \
+        *          /      |      \          .
+                 /   '    |    '   \
+       .            *           .              *
+            steer your own AI — by your own star
 ```

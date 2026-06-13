@@ -1,7 +1,9 @@
 {
+  "name": "lodestar",
+  "description": "Self-hosted AI for everyone -- your own private workspace, guided by your own star, running on the hardware you already have.",
   "repository": {
     "type": "git",
-    "url": "https://github.com/pewdiepie-archdaemon/odysseus.git"
+    "url": "https://github.com/<you>/lodestar.git"
   },
   "devDependencies": {
     "@antithesishq/bombadil": "^0.3.2"

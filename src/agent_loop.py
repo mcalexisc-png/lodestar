@@ -1,7 +1,7 @@
 """
 agent_loop.py
 
-Streaming agent loop for odysseus-ui.
+Streaming agent loop for lodestar-ui.
 Wraps stream_llm() with multi-round tool execution.
 The LLM decides when to use tools by writing fenced code blocks.
 """
@@ -39,20 +39,43 @@ from src.agent_tools import (
 logger = logging.getLogger(__name__)
 
 
-def _load_mcp_disabled_map() -> Dict[str, set]:
-    """Load per-server disabled tool sets from the database."""
+def _load_mcp_disabled_map(mcp_mgr=None) -> Dict[str, set]:
+    """Load the effective per-server hidden-tool sets from the database.
+
+    Combines two admin controls so both hide tools from the LLM prompt/schemas:
+      - ``disabled_tools`` (denylist): always hidden.
+      - ``allowed_tools`` (allowlist): when set, every *other* discovered tool
+        on that server is hidden. Needs ``mcp_mgr`` to know the full tool list;
+        without it, the allowlist is still enforced at runtime by McpManager.
+    """
     from core.database import McpServer, SessionLocal
     disabled_map: Dict[str, set] = {}
+
+    tools_by_server: Dict[str, set] = {}
+    if mcp_mgr is not None:
+        try:
+            for tool in mcp_mgr.get_all_tools():
+                tools_by_server.setdefault(tool["server_id"], set()).add(tool["name"])
+        except Exception:
+            tools_by_server = {}
+
     db = SessionLocal()
     try:
         for srv in db.query(McpServer).all():
+            hidden: set = set()
             if srv.disabled_tools:
                 try:
-                    names = json.loads(srv.disabled_tools)
-                    if names:
-                        disabled_map[srv.id] = set(names)
+                    hidden |= set(json.loads(srv.disabled_tools) or [])
                 except (json.JSONDecodeError, TypeError):
                     pass
+            if srv.allowed_tools is not None and srv.id in tools_by_server:
+                try:
+                    allowed = set(json.loads(srv.allowed_tools) or [])
+                except (json.JSONDecodeError, TypeError):
+                    allowed = set()
+                hidden |= (tools_by_server[srv.id] - allowed)
+            if hidden:
+                disabled_map[srv.id] = hidden
     finally:
         db.close()
     return disabled_map
@@ -137,7 +160,7 @@ _API_AGENT_RULES = """\
 - Plain "list/show/check my inbox/emails" means latest inbox mail, including read messages. Do not set `unread_only: true` unless the user explicitly asks for unread/needs attention.
 - Multiple email accounts: if tool output says "Other accounts" or the user asks "my Gmail?", "other inbox?", "work mail?", "custom domain mail?", or names any mailbox/account, DO NOT answer from memory or infer it is the same inbox. Call `list_email_accounts` if needed, then call `list_emails`/`read_email`/`bulk_email` with the exact `account` value for that mailbox. Account names are user-defined labels; if the user typo-matches a known account, use the closest listed account instead of claiming it does not exist. NEVER use `app_api` or `/api/email/accounts` to discover email accounts; that route is owner-filtered in tool context and can falsely return empty.
 - User identity facts/preferences ("my name is <name>", "I live in <place>", "I prefer concise replies", "call me <name>") → use `manage_memory` with action=add. NEVER use `manage_contact` for facts about the user unless the user explicitly says to create/update a contact and provides contact details such as an email or phone.
-- You are running INSIDE Odysseus — there is no OpenWebUI, ChatGPT, or external chat backend to query. All chats/sessions live in THIS app and are accessed via `list_sessions` (or `manage_session` with `action=list`), and deleted via `manage_session` with `action=delete`. Do NOT shell out to find sqlite files, curl localhost:8080, or grep for routers — those don't exist here. If `list_sessions` returns rows, that IS the source of truth.
+- You are running INSIDE Lodestar — there is no OpenWebUI, ChatGPT, or external chat backend to query. All chats/sessions live in THIS app and are accessed via `list_sessions` (or `manage_session` with `action=list`), and deleted via `manage_session` with `action=delete`. Do NOT shell out to find sqlite files, curl localhost:8080, or grep for routers — those don't exist here. If `list_sessions` returns rows, that IS the source of truth.
 - After `list_sessions`, preserve the returned `[Chat title](#session-<id>)` links in your user-facing reply. Do not rewrite chat lists as plain tables with non-clickable titles.
 - "Cookbook" = the LLM-serving subsystem (NOT chat sessions, NOT a recipe app). Routing:
   • "What's running" / "what's serving" / "show my cookbook" / "is anything up" → **first action MUST be `list_served_models` (no args)**. The tool is ALWAYS available. Do not run `ps aux`, do not `curl localhost:8000`, do not `which vllm`. Even if you don't remember seeing the tool listed, it IS available — call it. The output IS the source of truth (it tracks diffusion models, vLLM, SGLang, llama.cpp, Ollama, etc. — anything spawned via the cookbook, including remote hosts that `ps aux` here can't see).
@@ -250,7 +273,7 @@ _DOMAIN_RULES = {
 - Tool toggles like "turn off shell/search/research" use `ui_control toggle <name> <on|off>`, not memory.""",
     "sessions": """\
 ## Chat/session rules
-- Odysseus chats are sessions. Use `list_sessions`/`manage_session`; do not shell out looking for chat files.
+- Lodestar chats are sessions. Use `list_sessions`/`manage_session`; do not shell out looking for chat files.
 - Preserve clickable session links from tool output in your final answer.""",
     "files": """\
 ## File rules
@@ -301,7 +324,7 @@ For LONG-running commands (package installs, pip/npm, ffmpeg, model downloads, t
 #!bg
 pip install openai-whisper
 ```
-SANDBOX LIMITS: stdin/stdout are pipes, so there is NO interactive terminal — `input()`, `curses`, `termios`, `pygame`, and `tkinter` will all fail. Don't try to RUN interactive terminal games or GUI apps here — verify syntax (`python -c "import py_compile; py_compile.compile('x.py')"`) and tell the user to run it themselves in their own terminal. For anything the USER should play/use interactively (games, UIs, demos), prefer a single self-contained HTML file with `<canvas>` + inline JS — save it via `create_document` with language="html" and tell the user to hit the Run / Preview button (▶) in the document editor toolbar; it renders inline in a sandboxed iframe so the game is playable right there. Works from any machine that can reach the Odysseus UI — no need to copy files out.
+SANDBOX LIMITS: stdin/stdout are pipes, so there is NO interactive terminal — `input()`, `curses`, `termios`, `pygame`, and `tkinter` will all fail. Don't try to RUN interactive terminal games or GUI apps here — verify syntax (`python -c "import py_compile; py_compile.compile('x.py')"`) and tell the user to run it themselves in their own terminal. For anything the USER should play/use interactively (games, UIs, demos), prefer a single self-contained HTML file with `<canvas>` + inline JS — save it via `create_document` with language="html" and tell the user to hit the Run / Preview button (▶) in the document editor toolbar; it renders inline in a sandboxed iframe so the game is playable right there. Works from any machine that can reach the Lodestar UI — no need to copy files out.
 NEVER pipe multi-line Python through `python -c "..."` — shell quoting eats real newlines and `\\n` arrives as literal backslash-n, which Python parses as a line-continuation error on line 1. To run multi-line code, either use the dedicated `python` tool block above, or save to a file first with a quoted HEREDOC (`cat > /tmp/x.py << 'EOF' ... EOF`) and then `python /tmp/x.py`.""",
 
     "python": """\
@@ -471,7 +494,7 @@ If the user asks for a reminder/alarm before the event, pass `reminder_minutes` 
 ```app_api
 {"action": "call", "method": "GET", "path": "/api/cookbook/gpus"}
 ```
-GENERIC LOOPBACK to allowed Odysseus internal endpoints. Use this whenever the user wants something the UI can do but there's NO named tool for it. Many UI buttons hit /api/* endpoints — you can hit allowed ones. Auth is handled automatically.
+GENERIC LOOPBACK to allowed Lodestar internal endpoints. Use this whenever the user wants something the UI can do but there's NO named tool for it. Many UI buttons hit /api/* endpoints — you can hit allowed ones. Auth is handled automatically.
 
 **Discovery first.** If you're not sure of the path, call `{"action":"endpoints","filter":"<keyword>"}` (e.g. filter='calendar' or 'gallery' or 'theme') to list available endpoints with their methods + summaries. Then call with action='call'.
 
@@ -765,7 +788,7 @@ def _classify_agent_request(messages: List[Dict], last_user: str) -> Dict[str, o
     def has(*patterns: str) -> bool:
         return any(re.search(p, q) for p in patterns)
 
-    if has(r"\b(cookbook|serve|serving|served|launch|start|preset|vllm|sglang|llama\.?cpp|ollama|download|downloading|pull|cached models?|running models?|model servers?|models? (?:are )?running|what models?|model picker|gpu box|kierkegaard|odysseus|ajax|qwen|gemma|llama|mistral|minimax)\b"):
+    if has(r"\b(cookbook|serve|serving|served|launch|start|preset|vllm|sglang|llama\.?cpp|ollama|download|downloading|pull|cached models?|running models?|model servers?|models? (?:are )?running|what models?|model picker|gpu box|kierkegaard|lodestar|ajax|qwen|gemma|llama|mistral|minimax)\b"):
         domains.add("cookbook")
     if has(r"\b(emails?|mails?|gmail|inbox|reply|forward|cc|bcc|send email|compose email|draft email|message chris|message him|message her)\b"):
         domains.add("email")
@@ -855,7 +878,7 @@ def _build_system_prompt(
         _ov_sig = _hl.sha256(_json.dumps(get_builtin_overrides() or {}, sort_keys=True).encode()).hexdigest()
     except Exception:
         _ov_sig = ""
-    cache_key = (frozenset(disabled_tools or []), bool(mcp_mgr), needs_admin, _rt_key, compact, _ov_sig, suppress_local_context)
+    cache_key = (frozenset(disabled_tools or []), bool(mcp_mgr), needs_admin, _rt_key, compact, _ov_sig, owner, suppress_local_context)
     if _cached_base_prompt and _cached_base_prompt_key == cache_key and not active_document:
         agent_prompt = _cached_base_prompt
         # Skill index is user-editable (name + description), so it must never
@@ -863,7 +886,7 @@ def _build_system_prompt(
         # when the cache hits.
         _, _skill_index_block = _build_base_prompt(
             disabled_tools, mcp_mgr, needs_admin, relevant_tools,
-            mcp_disabled_map=mcp_disabled_map, compact=compact,
+            mcp_disabled_map=mcp_disabled_map, compact=compact, owner=owner,
             suppress_local_context=suppress_local_context,
         )
     else:
@@ -874,6 +897,7 @@ def _build_system_prompt(
             relevant_tools,
             mcp_disabled_map=mcp_disabled_map,
             compact=compact,
+            owner=owner,
             suppress_local_context=suppress_local_context,
         )
         if not active_document:
@@ -889,9 +913,20 @@ def _build_system_prompt(
 
     # Current date/time for every agent request. This is user-local when the
     # browser provided timezone headers, with a server-local fallback.
+    #
+    # IMPORTANT: this is intentionally NOT prepended into agent_prompt (the
+    # system message) anymore. Its text changes every minute, and local
+    # OpenAI-compatible backends (llama.cpp / LM Studio) key their KV-cache
+    # prefix off the system message byte-for-byte — mixing ever-changing
+    # timestamp text into the (already large, tool-laden) agent system prompt
+    # would invalidate the cached prefix on every single request, forcing a
+    # full prompt re-evaluation each turn (issue #2927). It's built here as a
+    # standalone *user*-role message and inserted near the end of the array,
+    # right alongside _doc_message / _skills_message, below.
+    _datetime_message = None
     try:
-        from src.user_time import current_datetime_prompt
-        agent_prompt = current_datetime_prompt() + agent_prompt
+        from src.user_time import current_datetime_context_message
+        _datetime_message = current_datetime_context_message()
     except Exception:
         pass
 
@@ -1228,6 +1263,9 @@ def _build_system_prompt(
         last_user_idx += 1  # the document message is now at last_user_idx
     if _skills_message:
         merged.insert(last_user_idx, _skills_message)
+        last_user_idx += 1
+    if _datetime_message:
+        merged.insert(last_user_idx, _datetime_message)
 
     return merged, mcp_schemas
 
@@ -1246,6 +1284,7 @@ def _build_base_prompt(
     relevant_tools=None,
     mcp_disabled_map=None,
     compact: bool = False,
+    owner: Optional[str] = None,
     suppress_local_context: bool = False,
 ):
     """Build the agent prompt with only relevant tools included.
@@ -1299,7 +1338,7 @@ def _build_base_prompt(
             from src.constants import DATA_DIR
             _sm = SkillsManager(DATA_DIR)
             active_tools = list(set(TOOL_SECTIONS.keys()) - set(disabled or []))
-            skill_idx = _sm.index_for(owner=None, active_toolsets=active_tools)
+            skill_idx = _sm.index_for(owner=owner, active_toolsets=active_tools)
             if skill_idx:
                 lines = ["## Available skills",
                          "Procedures the assistant should consult before doing domain work. "
@@ -1707,7 +1746,6 @@ async def stream_agent_loop(
     owner: Optional[str] = None,
     relevant_tools: Optional[Set[str]] = None,
     fallbacks: Optional[List[tuple]] = None,
-    workspace: Optional[str] = None,
     plan_mode: bool = False,
     approved_plan: Optional[str] = None,
     tool_policy: Optional[ToolPolicy] = None,
@@ -1761,7 +1799,7 @@ async def stream_agent_loop(
         sorted(_intent.get("domains") or []),
         _retrieval_query[:200],
     )
-    _mcp_disabled_map = _load_mcp_disabled_map() if mcp_mgr else {}
+    _mcp_disabled_map = _load_mcp_disabled_map(mcp_mgr) if mcp_mgr else {}
     if plan_mode and mcp_mgr:
         # Allow read-only MCP tools to investigate, block write/unknown ones:
         # hide them from the schemas AND reject them at runtime by qualified name.
@@ -1935,27 +1973,6 @@ async def stream_agent_loop(
         owner=owner,
         suppress_local_context=guide_only,
     )
-    if workspace and not guide_only:
-        # PREPEND (not append) so it dominates the large base prompt — appended
-        # at the end, small models ignored it and asked the user for code. The
-        # folder IS the project; the agent must explore it, not ask.
-        _ws_note = (
-            f"## ACTIVE WORKSPACE — READ FIRST\n"
-            f"The user is working in this folder: {workspace}\n"
-            f"It IS the project. bash/python run with cwd set here and "
-            f"read_file/write_file are confined to it (paths outside are rejected).\n"
-            f"When the user says \"the code\" / \"this project\" / \"the workspace\" "
-            f"or asks to review/find/edit something WITHOUT a path, they mean THIS "
-            f"folder. Do NOT ask the user for code or a path, and do NOT read a file "
-            f"literally named \"workspace\". ALWAYS start by exploring it yourself: "
-            f"run `bash` → `git ls-files` (or `ls -R`) to see the files, then "
-            f"read_file the relevant ones by path RELATIVE to the workspace."
-        )
-        if messages and messages[0].get("role") == "system":
-            messages[0]["content"] = _ws_note + "\n\n" + (messages[0].get("content") or "")
-        else:
-            messages.insert(0, {"role": "system", "content": _ws_note})
-        logger.info("[workspace] active for this turn: %s", workspace)
     if plan_mode and not guide_only:
         # Steer the model to investigate-then-propose. Hard tool gating handles
         # every write path except shell; this directive is what keeps the
@@ -2145,6 +2162,25 @@ async def stream_agent_loop(
                     if s.get("function", {}).get("name") not in _ADMIN_SCHEMA_NAMES
                 ]
                 all_tool_schemas = base_schemas + mcp_schemas
+            # In-process plugin tools (Tier 2): append enabled plugin schemas so
+            # the LLM can call them. Discovery is lazy/cached. Skip entirely in
+            # guide-only mode (no tools that turn). If RAG tool selection is
+            # active, only include plugins it selected; with no selection (and
+            # not guide-only) include all enabled plugins, matching how
+            # base_schemas behaves above.
+            if not guide_only:
+                try:
+                    from src.plugins import get_plugin_loader
+
+                    _plugin_schemas = get_plugin_loader().tool_schemas()
+                    if _relevant_tools:
+                        _plugin_schemas = [
+                            s for s in _plugin_schemas
+                            if s.get("function", {}).get("name") in _relevant_tools
+                        ]
+                    all_tool_schemas = all_tool_schemas + _plugin_schemas
+                except Exception:
+                    pass
             if disabled_tools:
                 all_tool_schemas = [
                     t for t in all_tool_schemas
@@ -2178,6 +2214,7 @@ async def stream_agent_loop(
             prompt_type=prompt_type if round_num == 1 else None,
             tools=all_tool_schemas if all_tool_schemas else None,
             timeout=agent_stream_timeout,
+            session_id=session_id,
         ):
             if time.time() > _round_deadline:
                 logger.warning(f"[agent] round {round_num} stream exceeded wall-clock deadline; cutting off")
@@ -2649,7 +2686,6 @@ async def stream_agent_loop(
                             tool_policy=tool_policy,
                             owner=owner,
                             progress_cb=_push_progress,
-                            workspace=workspace,
                         )
                     finally:
                         # Sentinel so the drainer knows to stop.

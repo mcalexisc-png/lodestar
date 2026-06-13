@@ -88,12 +88,22 @@ def discover_tailscale_hosts() -> List[str]:
 
 
 class ModelDiscovery:
+    # discover_models() port-scans ~24 ports per host with a 50-thread pool.
+    # The startup keepalive loop calls it every 60s indefinitely (via
+    # warmup_ping_urls), which is wasted work on cloud-only/lite setups where
+    # it never finds anything. Cache results briefly so back-to-back calls
+    # (keepalive ticks, repeated /providers loads) within the TTL reuse the
+    # last scan instead of re-scanning.
+    _DISCOVERY_CACHE_TTL = 55  # seconds; just under the 60s keepalive interval
+
     def __init__(self, default_host: str, openai_api_key: Optional[str] = None):
         self.default_host = default_host
         self.openai_api_key = openai_api_key
         self.openai_compat_path = "/v1/chat/completions"
         # Custom ports from env vars, merged into the scan list by discover_models.
         self._extra_ports: set = set()
+        self._discovery_cache: Optional[Dict[str, Any]] = None
+        self._discovery_cache_time: float = 0.0
 
     def _get_hosts(self) -> List[str]:
         """Get all hosts to scan, using env override, Tailscale, or default."""
@@ -187,8 +197,17 @@ class ModelDiscovery:
             pass
         return None
 
-    def discover_models(self) -> Dict[str, List[Dict[str, Any]]]:
-        """Discover available models from all reachable hosts."""
+    def discover_models(self, fresh: bool = False) -> Dict[str, List[Dict[str, Any]]]:
+        """Discover available models from all reachable hosts.
+
+        Cached for `_DISCOVERY_CACHE_TTL` seconds; pass `fresh=True` (e.g. an
+        explicit "rescan" action) to bypass the cache and re-scan immediately.
+        """
+        now = time.time()
+        if not fresh and self._discovery_cache is not None and \
+                (now - self._discovery_cache_time) < self._DISCOVERY_CACHE_TTL:
+            return self._discovery_cache
+
         hosts = self._get_hosts()
         items = []
 
@@ -221,7 +240,29 @@ class ModelDiscovery:
         logger.info(
             f"Discovered {len(items)} model endpoints across {len(hosts)} hosts"
         )
-        return {"hosts": hosts, "items": items}
+        result = {"hosts": hosts, "items": items}
+        self._discovery_cache = result
+        self._discovery_cache_time = now
+        return result
+
+    def warmup_ping_urls(self, limit: int = 5) -> List[str]:
+        """The ``/models`` URLs of up to ``limit`` discovered endpoints.
+
+        Used by the startup warmup / keepalive loop to prime connections. Each
+        discovered item already carries a ``/v1/chat/completions`` url; swap the
+        suffix for the cheap ``/models`` probe. Failures degrade to an empty list
+        so warmup never crashes the caller.
+        """
+        try:
+            items = (self.discover_models() or {}).get("items", [])
+        except Exception:
+            return []
+        urls: List[str] = []
+        for ep in items[:limit]:
+            url = (ep.get("url") or "").replace("/chat/completions", "/models")
+            if url:
+                urls.append(url)
+        return urls
 
     def get_providers(self) -> Dict[str, Any]:
         """Get all available providers"""

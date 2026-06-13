@@ -1,4 +1,4 @@
-"""`odysseus-research list --status complete` was returning nothing.
+"""`lodestar-research list --status complete` was returning nothing.
 
 The CLI's `--status` argparse choice is "complete" — that is the user-facing
 label — but the writer in `services/research/research_handler.py` stores
@@ -25,8 +25,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _load_cli():
-    path = ROOT / "scripts" / "odysseus-research"
-    loader = importlib.machinery.SourceFileLoader("odysseus_research_cli", str(path))
+    path = ROOT / "scripts" / "lodestar-research"
+    loader = importlib.machinery.SourceFileLoader("lodestar_research_cli", str(path))
     spec = importlib.util.spec_from_loader(loader.name, loader)
     module = importlib.util.module_from_spec(spec)
     loader.exec_module(module)

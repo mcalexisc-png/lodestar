@@ -38,7 +38,7 @@ import os
 import sys
 from pathlib import Path
 
-# Make repo root importable. Tools are invoked as `scripts/odysseus-foo`
+# Make repo root importable. Tools are invoked as `scripts/lodestar-foo`
 # from any cwd; we want `from core.database import ...` to work.
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:

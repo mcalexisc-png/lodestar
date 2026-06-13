@@ -804,11 +804,11 @@ export default markdownModule;
 
 // Mermaid is loaded async so it cannot delay the app shell.
 function initMermaid() {
-  if (!window.mermaid || window.__odysseusMermaidReady) return;
+  if (!window.mermaid || window.__lodestarMermaidReady) return;
   window.mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' });
-  window.__odysseusMermaidReady = true;
+  window.__lodestarMermaidReady = true;
 }
-window.odysseusInitMermaid = initMermaid;
+window.lodestarInitMermaid = initMermaid;
 initMermaid();
 
 // Persist which thinking sections were expanded across page refreshes.

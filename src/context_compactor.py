@@ -139,7 +139,7 @@ def _truncate_text_to_token_budget(text: str, token_budget: int) -> str:
 
     notice = (
         "\n\n[Notice: the pasted message was too large for this model's context "
-        "window, so Odysseus kept the beginning and end.]"
+        "window, so Lodestar kept the beginning and end.]"
     )
     keep_chars = max(200, max_chars - len(notice))
     head_len = max(100, int(keep_chars * 0.7))
@@ -438,8 +438,8 @@ def _update_session_history(session, split_point: int, summary: str,
     )
     new_history = system_prefix + [summary_msg] + recent_history
     try:
-        from core import models as _core_models
-        manager = getattr(_core_models, "_session_manager", None)
+        from core.models import get_session_manager_instance
+        manager = get_session_manager_instance()
     except Exception:
         manager = None
     if manager and getattr(session, "id", None):

@@ -44,7 +44,7 @@ const PATTERNS = [
 export function init() {
   // Load enabled state from feature flags
   _loadState();
-  window.addEventListener('odysseus-sensitive-blur-change', (e) => {
+  window.addEventListener('lodestar-sensitive-blur-change', (e) => {
     setEnabled(e.detail?.enabled !== false);
   });
   // Set up click handler for reveals (delegated)

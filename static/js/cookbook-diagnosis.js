@@ -174,7 +174,7 @@ export const ERROR_PATTERNS = [
       { label: 'Open Dependencies', action: () => _openCookbookDependencies('vllm') },
       {
         label: 'Copy upgrade hint',
-        action: () => _copyText('Upgrade the vLLM environment that provides the selected vllm CLI, or use a compatible checkpoint. Do not assume Odysseus owns PATH/system/source/Docker installs.'),
+        action: () => _copyText('Upgrade the vLLM environment that provides the selected vllm CLI, or use a compatible checkpoint. Do not assume Lodestar owns PATH/system/source/Docker installs.'),
       },
     ],
   },
@@ -406,7 +406,7 @@ export const ERROR_PATTERNS = [
       { label: 'Repair kernel package', action: () => {
         const _vp = (_envState.env === 'venv' && _envState.envPath)
           ? `${_envState.envPath.replace(/\/+$/, '')}/bin/python3` : 'python3';
-        _launchServeTask('repair-kernels', 'pip-update', `${_vp} -m pip install --user --break-system-packages kernels<0.15`);
+        _launchServeTask('repair-kernels', 'pip-update', `${_vp} -m pip install --user --break-system-packages "kernels<0.15"`);
       }},
       { label: 'Open Dependencies', action: () => _openCookbookDependencies('sglang') },
     ],
@@ -564,7 +564,7 @@ export function _diagnose(text) {
 }
 
 function _diagnosisCopyBundle(task, diagnosis, sourceText, suggestionText) {
-  const lines = ['## Odysseus Cookbook troubleshooting'];
+  const lines = ['## Lodestar Cookbook troubleshooting'];
   if (task) {
     lines.push(
       '',

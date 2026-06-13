@@ -1,0 +1,18 @@
+# Copy to /etc/systemd/system/lodestar-ui.service
+# Edit User, WorkingDirectory, and ExecStart paths to match your setup
+[Unit]
+Description=Lodestar UI
+After=network.target
+
+[Service]
+Type=simple
+# CHANGE THESE to match your user and install path:
+User=YOURUSER
+WorkingDirectory=/home/YOURUSER/lodestar-ui
+ExecStart=/home/YOURUSER/lodestar-ui/venv/bin/uvicorn app:app --port 7000 --host 0.0.0.0
+Restart=always
+RestartSec=3
+EnvironmentFile=-/home/YOURUSER/lodestar-ui/.env
+
+[Install]
+WantedBy=multi-user.target

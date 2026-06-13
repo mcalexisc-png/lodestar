@@ -37,6 +37,10 @@ DEFAULT_FILE_EXTENSIONS: Set[str] = {
 VECTOR_WEIGHT = 0.7
 KEYWORD_WEIGHT = 0.3
 
+# TODO(lodestar): "odysseus_rag" is a persisted ChromaDB collection name.
+# Renaming it would orphan existing users' indexed RAG data — needs a
+# migration (create lodestar_rag, copy/re-embed, drop old), not a text
+# rename. Same bucket as the odysseus_kind/odysseus_ref DB columns.
 COLLECTION_NAME = "odysseus_rag"
 
 

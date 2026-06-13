@@ -47,6 +47,7 @@ from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 # Core imports
 from core.constants import (
@@ -55,7 +56,7 @@ from core.constants import (
 )
 from core.database import SessionLocal, ApiToken
 from core.middleware import SecurityHeadersMiddleware, is_cors_preflight
-from core.auth import AuthManager
+from core.auth import AuthManager, normalize_known_username
 from core.exceptions import (
     SessionNotFoundError, InvalidFileUploadError,
     LLMServiceError, WebSearchError,
@@ -64,6 +65,7 @@ from core.exceptions import (
 import bcrypt as _bcrypt
 
 from src.app_helpers import abs_join
+from src.env_compat import getenv as _getenv_compat
 from src.generated_images import GENERATED_IMAGE_HEADERS, resolve_generated_image_path
 from starlette.responses import RedirectResponse
 
@@ -97,12 +99,22 @@ app.add_middleware(
         "Content-Type",
         "X-API-Key",
         "X-Auth-Token",
-        "X-Odysseus-Internal-Token",
-        "X-Odysseus-Owner",
+        "X-Lodestar-Internal-Token",
+        "X-Lodestar-Owner",
         "X-Requested-With",
         "X-TZ-Offset",
     ],
 )
+
+# ========= RESPONSE COMPRESSION (gzip) =========
+# The frontend's text assets (style.css, index.html, the JS bundles) shipped
+# uncompressed on every cold load. gzip cuts CSS/JS/HTML by ~75-85% on the wire
+# with no behavioural change. Starlette's GZipMiddleware excludes
+# `text/event-stream` by default, so the SSE streams (chat, shell, research,
+# model-probe — all served with media_type="text/event-stream") are never
+# compressed or buffered; only complete bodies over minimum_size are. The
+# security-header middleware composes cleanly on top.
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 
 # ========= SECURITY HEADERS MIDDLEWARE =========
 app.add_middleware(SecurityHeadersMiddleware)
@@ -217,8 +229,16 @@ if AUTH_ENABLED:
         try:
             rows = db.query(ApiToken).filter(ApiToken.is_active == True).all()
             for r in rows:
+                owner_key = normalize_known_username(auth_manager.users, getattr(r, "owner", None))
+                if not owner_key:
+                    logger.warning(
+                        "Ignoring active API token '%s' for unknown auth user '%s'",
+                        getattr(r, "id", ""),
+                        getattr(r, "owner", None),
+                    )
+                    continue
                 scopes = [s.strip() for s in (getattr(r, "scopes", "") or "chat").split(",") if s.strip()]
-                new_map[r.token_prefix].append((r.id, r.token_hash, getattr(r, "owner", None), scopes))
+                new_map[r.token_prefix].append((r.id, r.token_hash, owner_key, scopes))
         finally:
             db.close()
         _token_cache.clear()
@@ -239,7 +259,7 @@ if AUTH_ENABLED:
         forwarding headers. A bare ``client.host in ('127.0.0.1','::1')`` check is
         unsafe behind a Cloudflare tunnel / reverse proxy: those connect from
         loopback, so a remote visitor would otherwise inherit local trust and
-        slip past LOCALHOST_BYPASS or spoof the internal-tool path. Odysseus's own
+        slip past LOCALHOST_BYPASS or spoof the internal-tool path. Lodestar's own
         in-process agent loopback calls carry none of these headers, so they still
         qualify."""
         host = request.client.host if request.client else None
@@ -273,10 +293,10 @@ if AUTH_ENABLED:
                 _hdr = request.headers.get(INTERNAL_TOOL_HEADER)
                 if _hdr and secrets.compare_digest(_hdr, _ITT) and _is_trusted_loopback(request):
                     # Impersonation: when the agent's loopback call sets
-                    # X-Odysseus-Owner, attribute the request to that user only
+                    # X-Lodestar-Owner, attribute the request to that user only
                     # if they exist. Authorization checks remain separate; this
                     # is just owner attribution for notes/calendar/etc.
-                    _impersonate = (request.headers.get("X-Odysseus-Owner") or "").strip()
+                    _impersonate = (request.headers.get("X-Lodestar-Owner") or "").strip()
                     _auth_mgr = getattr(request.app.state, "auth_manager", None) or auth_manager
                     if _impersonate and _impersonate in getattr(_auth_mgr, "users", {}):
                         request.state.current_user = _impersonate
@@ -450,16 +470,28 @@ init_youtube()
 # 2.12 were mutually incompatible at the time. With the current pins
 # (chromadb 1.5.x + pydantic 2.13.x) the init works and Personal Docs
 # (POST /api/personal/add_directory etc.) is functional again.
-from src.rag_singleton import get_rag_manager
-rag_manager = get_rag_manager()
-rag_available = rag_manager is not None
-if rag_available:
-    logger.info("Vector document RAG initialized")
+#
+# Under LODESTAR_LITE, skip this call entirely: get_rag_manager() would
+# otherwise import chromadb/fastembed and attempt a ChromaDB connection on
+# every cold start. Personal-doc routes already handle rag_manager=None /
+# rag_available=False with a clean 503, so this is behavior-preserving for
+# lite installs that don't run the ChromaDB container.
+from src.constants import LODESTAR_LITE as _LODESTAR_LITE
+if _LODESTAR_LITE:
+    rag_manager = None
+    rag_available = False
+    logger.info("Vector document RAG skipped (LODESTAR_LITE=true)")
 else:
-    logger.info(
-        "Vector document RAG not available at startup "
-        "(ChromaDB may not be reachable yet — routes will retry lazily)"
-    )
+    from src.rag_singleton import get_rag_manager
+    rag_manager = get_rag_manager()
+    rag_available = rag_manager is not None
+    if rag_available:
+        logger.info("Vector document RAG initialized")
+    else:
+        logger.info(
+            "Vector document RAG not available at startup "
+            "(ChromaDB may not be reachable yet — routes will retry lazily)"
+        )
 
 # ========= IMPORT CONFIG =========
 from src.config import config
@@ -472,14 +504,20 @@ components = initialize_managers(BASE_DIR, rag_manager)
 session_manager   = components["session_manager"]
 from src.assistant_log import set_session_manager as _set_asst_sm
 _set_asst_sm(session_manager)
+# Set the global session manager singleton (used by core.models.Session.add_message)
+from core.models import set_session_manager_instance
+set_session_manager_instance(session_manager)
+app.state.session_manager = session_manager
 memory_manager    = components["memory_manager"]
 memory_vector     = components.get("memory_vector")
 upload_handler    = components["upload_handler"]
+app.state.upload_handler = upload_handler
 personal_docs_mgr = components["personal_docs_manager"]
 api_key_manager   = components["api_key_manager"]
 preset_manager    = components["preset_manager"]
 chat_processor    = components["chat_processor"]
 research_handler  = components["research_handler"]
+app.state.research_handler = research_handler
 chat_handler      = components["chat_handler"]
 model_discovery   = components["model_discovery"]
 skills_manager    = components["skills_manager"]
@@ -573,7 +611,7 @@ app.include_router(setup_preset_routes(preset_manager))
 
 # Diagnostics
 from routes.diagnostics_routes import setup_diagnostics_routes
-app.include_router(setup_diagnostics_routes(rag_manager, rag_available, research_handler))
+app.include_router(setup_diagnostics_routes(rag_manager, rag_available, research_handler, memory_vector))
 
 # Cleanup
 from routes.cleanup_routes import setup_cleanup_routes
@@ -680,6 +718,12 @@ mcp_manager = McpManager()
 set_mcp_manager(mcp_manager)
 app.include_router(setup_mcp_routes(mcp_manager))
 logger.info("MCP routes initialized")
+
+# In-process plugin routes (list + safe UI panel schemas). Lightweight: the
+# plugin loader only discovers/imports on first request, not at registration.
+from routes.plugin_routes import setup_plugin_routes
+app.include_router(setup_plugin_routes())
+logger.info("Plugin routes initialized")
 
 # AI Interaction tools (debates, pipelines, self-managing AI, UI control)
 from src.ai_interaction import set_session_manager as set_ai_session_manager, set_memory_manager as set_ai_memory_manager, set_rag_manager as set_ai_rag_manager
@@ -908,6 +952,12 @@ async def _startup_event():
     # one-time ~1-3s cost that otherwise lands on the user's FIRST message
     # (showing up as a big `tool_selection` time). Doing it here makes the
     # first turn as fast as subsequent ones (warm embed ≈ a few ms).
+    #
+    # Skipped under LODESTAR_LITE: get_tool_index() imports numpy/chromadb/
+    # fastembed, which lite mode otherwise avoids at boot. Agent tool
+    # selection still works — get_tool_index() degrades to None on failure
+    # the same way it would in full mode without ChromaDB, and agent_loop /
+    # task_scheduler call it lazily on first use.
     async def _warmup_tool_index():
         try:
             from src.tool_index import get_tool_index
@@ -918,21 +968,29 @@ async def _startup_event():
         except Exception as e:
             logger.warning(f"Tool index warmup failed (non-critical): {type(e).__name__}: {e}")
 
-    _startup_tasks.append(asyncio.create_task(_warmup_tool_index()))
+    if _LODESTAR_LITE:
+        logger.info("Tool index pre-warm skipped (LODESTAR_LITE=true)")
+    else:
+        _startup_tasks.append(asyncio.create_task(_warmup_tool_index()))
     # Warmup: ping all known LLM endpoints to prime connections
     async def _warmup_endpoints():
         try:
             import httpx
-            endpoints = model_discovery.get_endpoints() if model_discovery else []
-            for ep in endpoints[:5]:
-                url = ep.get("url", "").replace("/chat/completions", "/models")
-                if url:
-                    try:
-                        async with httpx.AsyncClient(timeout=5.0) as client:
-                            await client.get(url)
-                        logger.info(f"Warmup ping OK: {url}")
-                    except Exception as e:
-                        logger.debug(f"Warmup ping failed for endpoint: {e}")
+            # model_discovery has no get_endpoints(); that call raised
+            # AttributeError every run and silently disabled warmup/keepalive.
+            # Resolve the /models probe URLs via the real discovery API, off the
+            # event loop since discovery does a blocking port scan.
+            urls = (
+                await asyncio.to_thread(model_discovery.warmup_ping_urls)
+                if model_discovery else []
+            )
+            for url in urls:
+                try:
+                    async with httpx.AsyncClient(timeout=5.0) as client:
+                        await client.get(url)
+                    logger.info(f"Warmup ping OK: {url}")
+                except Exception as e:
+                    logger.debug(f"Warmup ping failed for endpoint: {e}")
         except Exception as e:
             logger.debug(f"Warmup ping skipped: {e}")
 
@@ -1021,13 +1079,13 @@ async def _startup_event():
 
     # Start scheduled task runner — skip when running under a cron-driven
     # deployment where an external worker drives task firing. Mirrors
-    # `ODYSSEUS_INPROCESS_POLLERS` from the email pollers.
-    _tasks_inprocess = os.environ.get("ODYSSEUS_INPROCESS_TASKS", "1").strip().lower()
+    # `LODESTAR_INPROCESS_POLLERS` from the email pollers.
+    _tasks_inprocess = (_getenv_compat("LODESTAR_INPROCESS_TASKS", "ODYSSEUS_INPROCESS_TASKS", "1") or "1").strip().lower()
     if _tasks_inprocess not in ("0", "false", "no", "off", ""):
         await task_scheduler.start()
     else:
         logger.info(
-            "In-process task scheduler disabled (ODYSSEUS_INPROCESS_TASKS=0); "
+            "In-process task scheduler disabled (LODESTAR_INPROCESS_TASKS=0); "
             "drive task firing externally (e.g. cron)."
         )
     # Periodic null-owner sweep — re-runs the legacy-owner assignment hourly

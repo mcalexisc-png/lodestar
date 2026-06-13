@@ -1,7 +1,7 @@
 """Codex integration routes.
 
 These are small HTTP surfaces intended for the Codex plugin/MCP bridge. They
-reuse existing Odysseus helpers and enforce API-token scopes before touching
+reuse existing Lodestar helpers and enforce API-token scopes before touching
 user data.
 """
 
@@ -557,7 +557,7 @@ def setup_codex_routes(
         # moment vllm exits; the log file is the raw stdout/stderr and
         # survives unchanged. Falls back to pane for older tasks predating
         # the tee-to-log runner change.
-        log_path = f"/tmp/odysseus-tmux/{session_id}.log"
+        log_path = f"/tmp/lodestar-tmux/{session_id}.log"
         inner = (
             f"if [ -s {log_path} ]; then tail -n {tail} {log_path}; "
             f"else tmux capture-pane -t {session_id} -p -S -{tail}; fi"

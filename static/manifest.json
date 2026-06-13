@@ -1,7 +1,7 @@
 {
-  "name": "Odysseus",
-  "short_name": "Odysseus",
-  "description": "Self-hosted AI chat with memory, documents, and tools",
+  "name": "Lodestar",
+  "short_name": "Lodestar",
+  "description": "Self-hosted AI for everyone -- your own private workspace, guided by your own star",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

@@ -8,10 +8,13 @@ Each server runs as a stdio subprocess managed by McpManager.
 import logging
 import os
 import shutil
+import subprocess
 import sys
 import asyncio
 
 from core.platform_compat import IS_WINDOWS, which_tool
+from src.constants import LODESTAR_LITE
+from src.env_compat import getenv as _getenv_compat
 
 logger = logging.getLogger(__name__)
 
@@ -83,13 +86,13 @@ _BUILTIN_NPX_SERVERS = {
 }
 
 # Global flag to disable MCP if there are compatibility issues
-MCP_DISABLED = os.environ.get("ODYSSEUS_DISABLE_MCP", "").lower() in ("1", "true", "yes")
+MCP_DISABLED = (_getenv_compat("LODESTAR_DISABLE_MCP", "ODYSSEUS_DISABLE_MCP", "") or "").lower() in ("1", "true", "yes")
 
 
 async def register_builtin_servers(mcp_manager):
     """Connect all built-in MCP servers to the manager."""
     if MCP_DISABLED:
-        logger.info("Built-in MCP servers disabled via ODYSSEUS_DISABLE_MCP")
+        logger.info("Built-in MCP servers disabled via LODESTAR_DISABLE_MCP")
         return
 
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -122,6 +125,13 @@ async def register_builtin_servers(mcp_manager):
             continue
         asyncio.create_task(_connect_python_server(server_id, script_path, name))
 
+    if LODESTAR_LITE:
+        logger.info(
+            "Skipping built-in NPX MCP servers (e.g. browser/Playwright) "
+            "in lite mode (LODESTAR_LITE=true)"
+        )
+        return
+
     # Register NPX-based servers in the background (they take longer to start)
     npx_path = _find_npx()
     logger.info(f"NPX binary resolved to: {npx_path}")
@@ -148,7 +158,7 @@ async def register_builtin_servers(mcp_manager):
                     f"  Reason: npm package {pkg_spec!r} is not installed in the npx cache.\n"
                     f"  Impact: tools provided by this MCP server will be unavailable.\n"
                     f"  Fix:    {os.path.basename(npx_path)} -y {pkg_spec} --version\n"
-                    f"          (run once, then restart Odysseus)\n"
+                    f"          (run once, then restart Lodestar)\n"
                     f"  Notes:  this server is optional; see README.md "
                     f"'Built-in MCP servers' for details."
                 )
@@ -208,6 +218,16 @@ async def _is_npx_package_cached(npx_path, package_spec, timeout_s=5):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
+    except NotImplementedError:
+        try:
+            result = subprocess.run(
+                [npx_path, "--no-install", package_spec, "--version"],
+                capture_output=True,
+                timeout=timeout_s,
+            )
+        except (subprocess.TimeoutExpired, OSError, ValueError):
+            return False
+        return result.returncode == 0 and bool(result.stdout.strip())
     except (OSError, ValueError):
         return False
     try:

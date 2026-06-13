@@ -14,6 +14,7 @@ from src.auth_helpers import owner_filter
 from core.platform_compat import IS_WINDOWS, find_bash
 from core.constants import internal_api_base
 from src.constants import DATA_DIR, DEEP_RESEARCH_DIR, TIDY_CALENDAR_STATE_FILE, EMAIL_URGENCY_CACHE_DIR, COOKBOOK_STATE_FILE
+from src.env_compat import getenv as _getenv_compat
 
 logger = logging.getLogger(__name__)
 
@@ -331,7 +332,7 @@ async def action_run_script(owner: str, script: str = "", host: str = "", **kwar
     """Run a script locally, or via SSH when a host is configured."""
     if not script:
         return "No script specified", False
-    target_host = (host or os.getenv("ODYSSEUS_SCRIPT_HOST", "localhost")).strip()
+    target_host = (host or _getenv_compat("LODESTAR_SCRIPT_HOST", "ODYSSEUS_SCRIPT_HOST", "localhost")).strip()
     if target_host in ("", "localhost", "127.0.0.1", "local"):
         if IS_WINDOWS and find_bash():
             return await _run_subprocess([find_bash(), "-c", script], timeout=300, label="Script")
@@ -579,6 +580,24 @@ def _classify_event_heuristic(summary: str) -> tuple:
     return etype, None
 
 
+def _memory_context_lines(mems, limit: int = 40) -> list:
+    """Render Memory rows into short personal-context bullets for event classify.
+
+    Reads the Memory ORM `text` column. The previous inline code read a
+    non-existent `content` attribute, so it raised AttributeError on the first
+    row, the surrounding except swallowed it, and the classifier ran with no
+    personal context at all. getattr keeps it robust to future schema drift.
+    """
+    lines: list = []
+    for m in mems:
+        c = (getattr(m, "text", "") or "").strip()
+        if c:
+            lines.append(f"- {c[:200]}")
+        if len(lines) >= limit:
+            break
+    return lines
+
+
 async def action_classify_events(owner: str, **kwargs) -> Tuple[str, bool]:
     """Hybrid classification of upcoming calendar events: fast heuristic for
     obvious cases, LLM fallback for ambiguous ones. Assigns event_type +
@@ -614,16 +633,11 @@ async def action_classify_events(owner: str, **kwargs) -> Tuple[str, bool]:
             try:
                 from core.database import Memory as _Mem
                 _mems = db.query(_Mem).filter(_Mem.owner == owner).limit(60).all() if owner else []
-                if _mems:
-                    _lines = []
-                    for m in _mems:
-                        c = (m.content or "").strip()
-                        if c:
-                            _lines.append(f"- {c[:200]}")
-                    if _lines:
-                        _memory_context = "USER CONTEXT (relationships, work, life):\n" + "\n".join(_lines[:40]) + "\n\n"
+                _lines = _memory_context_lines(_mems)
+                if _lines:
+                    _memory_context = "USER CONTEXT (relationships, work, life):\n" + "\n".join(_lines) + "\n\n"
             except Exception as _me:
-                logger.debug(f"Could not load memory for classify: {_me}")
+                logger.warning(f"Could not load memory for classify: {_me}")
 
             classified_h = 0
             classified_llm = 0
@@ -796,14 +810,14 @@ async def action_learn_sender_signatures(owner: str, **kwargs) -> Tuple[str, boo
         import email as _email_mod
         import asyncio as _aio
         from datetime import datetime as _dt, timedelta as _td
-        from routes.email_helpers import _imap_connect, SCHEDULED_DB
+        from routes.email_helpers import _email_cache_owner_clause, _imap_connect, SCHEDULED_DB
         from src.endpoint_resolver import resolve_endpoint
         from src.llm_core import llm_call_async
 
         # 1. Pull recent UIDs + From headers cheaply (header-only fetch).
         def _pull_headers():
             results = []
-            conn = _imap_connect(None)
+            conn = _imap_connect(None, owner=owner)
             try:
                 conn.select("INBOX", readonly=True)
                 status, data = conn.search(None, "ALL")
@@ -855,9 +869,11 @@ async def action_learn_sender_signatures(owner: str, **kwargs) -> Tuple[str, boo
         # 3. Eligibility: ≥3 emails AND (no cache OR cache > 30 days old).
         try:
             conn = _sql3.connect(SCHEDULED_DB)
+            owner_clause, owner_params = _email_cache_owner_clause(owner)
             cached = {
                 r[0]: r[1] for r in conn.execute(
-                    "SELECT from_address, last_built_at FROM sender_signatures"
+                    f"SELECT from_address, last_built_at FROM sender_signatures WHERE {owner_clause}",
+                    owner_params,
                 ).fetchall()
             }
             conn.close()
@@ -888,7 +904,7 @@ async def action_learn_sender_signatures(owner: str, **kwargs) -> Tuple[str, boo
 
             def _fetch_bodies(_msgs):
                 bodies = []
-                conn2 = _imap_connect(None)
+                conn2 = _imap_connect(None, owner=owner)
                 try:
                     conn2.select("INBOX", readonly=True)
                     for mm in _msgs:
@@ -965,11 +981,12 @@ async def action_learn_sender_signatures(owner: str, **kwargs) -> Tuple[str, boo
 
             try:
                 conn = _sql3.connect(SCHEDULED_DB)
+                owner_value = (owner or "").strip()
                 conn.execute(
                     "INSERT OR REPLACE INTO sender_signatures "
-                    "(from_address, signature_text, sample_count, last_built_at, model_used, source) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
-                    (addr, cached_sig, len(bodies), _dt.utcnow().isoformat(), model, "llm"),
+                    "(from_address, owner, signature_text, sample_count, last_built_at, model_used, source) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (addr, owner_value, cached_sig, len(bodies), _dt.utcnow().isoformat(), model, "llm"),
                 )
                 conn.commit()
                 conn.close()
@@ -1567,12 +1584,12 @@ async def action_check_email_urgency(owner: str, **kwargs) -> Tuple[str, bool]:
                             if not raw:
                                 continue
                             msg = _email_mod.message_from_bytes(raw)
-                            # Skip Odysseus-generated reminders so the scanner
+                            # Skip Lodestar-generated reminders so the scanner
                             # doesn't classify its own emails as urgent and
                             # trigger a feedback loop. Match on either the
                             # stamped headers OR the subject prefix.
-                            _ody_origin = (msg.get("X-Odysseus-Origin") or "").strip().lower()
-                            _ody_kind = (msg.get("X-Odysseus-Kind") or "").strip().lower()
+                            _lode_origin = (msg.get("X-Lodestar-Origin") or "").strip().lower()
+                            _lode_kind = (msg.get("X-Lodestar-Kind") or "").strip().lower()
                             _raw_subj = (msg.get("Subject") or "").lower()
                             # MCP path drops custom headers (email_server's
                             # schema doesn't accept them), so we ALSO match the
@@ -1580,7 +1597,7 @@ async def action_check_email_urgency(owner: str, **kwargs) -> Tuple[str, bool]:
                             # always stamps. Anything that looks self-generated
                             # is dropped before classification to prevent the
                             # scanner from labelling its own emails "urgent".
-                            if (_ody_origin == "odysseus-ui" or _ody_kind == "reminder"
+                            if (_lode_origin == "lodestar-ui" or _lode_kind == "reminder"
                                     or _raw_subj.startswith("reminder (odysseus):")
                                     or _raw_subj.startswith("reminder:")
                                     or _raw_subj.startswith("[task]")):
@@ -1869,7 +1886,7 @@ async def action_check_email_urgency(owner: str, **kwargs) -> Tuple[str, bool]:
             # one — so the reminder email tells you which messages to act on,
             # not just "4 needing reply". Optional deep-link when the user has
             # `app_public_url` configured in Settings (so the email row links
-            # straight into the Odysseus Email tab).
+            # straight into the Lodestar Email tab).
             # Sort: highest-scored UIDs first; cap at 10 to keep the email tidy.
             sorted_urgent = sorted(
                 ((k, per_uid_scores[k]) for k in urgent_keys),
@@ -2239,7 +2256,7 @@ BUILTIN_ACTION_INFO = {
     "daily_brief": "Build a morning digest: today's calendar, unread email count + top senders, active todos",
     "learn_sender_signatures": "LLM learns each sender's signature from 3+ of their recent emails; cached per address so future renders fold sigs reliably without heuristics",
     "ssh_command": "Run a shell command on a local or remote host",
-    "run_script": "Run a script locally or on ODYSSEUS_SCRIPT_HOST",
+    "run_script": "Run a script locally or on LODESTAR_SCRIPT_HOST",
     "test_skills": "Run the per-skill Test on every skill: agent run + LLM judge → records verdict on the skill (pass/needs_work/fail/inconclusive). Advisory only — never rewrites or demotes anything.",
     "audit_skills": "Audit unaudited skills after enough new skills are added: test, narrow metadata, self-edit/retry, optional teacher rewrite, tag duplicates/trivial skills, and publish/draft using the auto-approve threshold.",
     "check_email_urgency": "Scan unread emails hourly, tag urgent/reply-soon/newsletter/marketing/spam, and send a reminder when a new email needs a fast reply.",

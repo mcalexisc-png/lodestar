@@ -2428,6 +2428,39 @@ function initBackup() {
   });
 }
 
+/* ── Service Status ── */
+const _SERVICE_STATUS_CLASS = {
+  ok: 'task-log-status-ok',
+  degraded: 'task-log-status-queued',
+  down: 'task-log-status-error',
+  disabled: 'task-log-status-info',
+};
+
+function initServiceStatus() {
+  const btn = el('adm-serviceStatusBtn');
+  const list = el('adm-serviceStatusList');
+  if (!btn || !list) return;
+  btn.addEventListener('click', async () => {
+    btn.disabled = true; btn.textContent = 'Checking...'; list.innerHTML = '';
+    try {
+      const res = await fetch('/api/diagnostics/services', { credentials: 'same-origin' });
+      const data = await res.json();
+      const services = Array.isArray(data.services) ? data.services : [];
+      list.innerHTML = services.map(svc => {
+        const dotClass = _SERVICE_STATUS_CLASS[svc.status] || 'task-log-status-info';
+        return `<div style="display:flex;align-items:center;gap:8px;font-size:12px;">
+          <span class="task-log-status ${dotClass}"></span>
+          <span style="font-weight:600;min-width:80px;">${esc(svc.name)}</span>
+          <span style="opacity:0.7;">${esc(svc.detail)}</span>
+        </div>`;
+      }).join('') || '<div style="font-size:12px;opacity:0.6;">No services to report.</div>';
+    } catch (e) {
+      list.innerHTML = '<div style="font-size:12px;color:var(--red);">Status check failed.</div>';
+    }
+    btn.disabled = false; btn.textContent = 'Check Status';
+  });
+}
+
 /* ── Danger Zone ── */
 function initDangerZone() {
   // Per-category Danger Zone wipes. Each button declares its target
@@ -2468,7 +2501,7 @@ function initDangerZone() {
    ═══════════════════════════════════════════ */
 function initAll() {
   modalEl = el('settings-modal');
-  const inits = [initSignupToggle, initAddUser, initEndpointForm, initMcpForm, initCalDAV, initBackup, initDangerZone, initTokenForm, () => settingsModule.initIntegrations()];
+  const inits = [initSignupToggle, initAddUser, initEndpointForm, initMcpForm, initCalDAV, initBackup, initServiceStatus, initDangerZone, initTokenForm, () => settingsModule.initIntegrations()];
   for (const fn of inits) {
     try { fn(); } catch (e) { console.error('Admin init error in', fn.name || 'anonymous', e); }
   }

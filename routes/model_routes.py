@@ -123,6 +123,21 @@ def _clear_user_pref_endpoint_refs(all_prefs: dict, ep_id: str) -> int:
     return cleared_users
 
 
+def _default_endpoint_needs_assignment(current_default_id: str, enabled_endpoint_ids) -> bool:
+    """Whether the global default chat endpoint should be (re)assigned.
+
+    True when nothing is configured yet, or the configured default no longer
+    resolves to an enabled endpoint (e.g. the user disabled it). Without the
+    second case, adding a new endpoint after disabling the previous default
+    leaves `default_endpoint_id` pointing at the disabled endpoint, so features
+    that read the raw setting (Memory → Tidy) fail with "No default model
+    configured" even though an enabled endpoint exists. See #3586.
+    """
+    if not current_default_id:
+        return True
+    return current_default_id not in enabled_endpoint_ids
+
+
 # Loopback hosts a user might type for a local model server (LM Studio,
 # llama.cpp, vLLM, …). Inside Docker these point at the *container*, not the
 # host the server actually runs on.
@@ -154,7 +169,7 @@ def _container_loopback_reachable(base_url: str, timeout: float = 0.2) -> bool:
     """True when the requested loopback host:port is already reachable from
     inside the current container.
 
-    This distinguishes "a model server running alongside Odysseus in the same
+    This distinguishes "a model server running alongside Lodestar in the same
     container" from "a model server running on the Docker host". Only the
     latter should be rewritten to host.docker.internal.
     """
@@ -180,11 +195,11 @@ def _container_loopback_reachable(base_url: str, timeout: float = 0.2) -> bool:
 def _rewrite_loopback_for_docker(base_url: str, *, container_local: bool = False) -> str:
     """Rewrite a loopback model-endpoint URL to ``host.docker.internal`` when
     running in Docker. A URL like ``http://localhost:1234/v1`` (the LM Studio
-    default) otherwise targets the Odysseus container itself, so the probe gets
+    default) otherwise targets the Lodestar container itself, so the probe gets
     a connection error and the endpoint is rejected with a misleading "No
     models found for that provider/key".
 
-    Cookbook local serves are the opposite case: Odysseus started the model
+    Cookbook local serves are the opposite case: Lodestar started the model
     server inside the same container/process environment, so the saved endpoint
     must remain container-local. In that mode, normalize a bind address such as
     0.0.0.0 to a connectable loopback host, but do not jump to the Docker host.
@@ -265,6 +280,10 @@ _PROVIDER_CURATED = {
     "xai": [
         "grok-4.3", "grok-4", "grok-4-fast", "grok-3", "grok-3-fast",
     ],
+    "cerebras": [
+        "llama-3.3-70b", "llama3.1-8b", "qwen-3-32b", "qwen-3-235b-a22b-instruct-2507",
+        "gpt-oss-120b",
+    ],
 }
 
 # Map hostnames → curated-list keys for providers whose _detect_provider()
@@ -283,8 +302,10 @@ _HOST_TO_CURATED = (
     ("fireworks.ai", "fireworks"),
     ("googleapis.com", "google"),
     ("x.ai", "xai"),
+    ("nvidia.com", "nvidia"),
     ("openrouter.ai", "openrouter"),
     ("ollama.com", "ollama"),
+    ("cerebras.ai", "cerebras"),
 )
 
 
@@ -477,10 +498,17 @@ _NON_CHAT_PREFIXES = (
     "dall-e", "tts-", "whisper", "text-embedding", "embedding",
     "davinci", "babbage", "moderation", "omni-moderation",
     "sora", "gpt-image", "chatgpt-image",
+    # embedding / retrieval / non-chat models (common across providers)
+    "snowflake/arctic-embed", "nvidia/nv-embed", "embed",
 )
 _NON_CHAT_CONTAINS = (
     "-realtime", "-transcribe", "-tts", "-codex",
-    "codex-",
+    "codex-", "content-safety", "-safety", "-reward", "nvclip",
+    "kosmos", "fuyu", "deplot", "vila", "neva",
+    "gliner", "riva", "-parse", "-embedqa", "-nemoretriever",
+    "topic-control", "calibration",
+    "ai-synthetic-video", "cosmos-reason2",
+    "bge", "llama-guard",
 )
 _NON_CHAT_EXACT_PREFIXES = (
     "gpt-audio",  # gpt-audio, gpt-audio-mini etc. (not gpt-4o-audio-preview which is chat)
@@ -731,7 +759,7 @@ def _probe_endpoint(base_url: str, api_key: str = None, timeout: int = 5) -> Lis
                 for _e in _PROVIDER_CURATED.get(_ck, []):
                     if _e not in set(models) and not any(m.startswith(_e) for m in models):
                         models.append(_e)
-            return models
+            return [m for m in models if _is_chat_model(m)]
     except httpx.HTTPStatusError as e:
         if api_key:
             status = e.response.status_code if e.response is not None else "unknown"
@@ -755,7 +783,7 @@ def _probe_endpoint(base_url: str, api_key: str = None, timeout: int = 5) -> Lis
             data = r.json()
             models = [m.get("name") or m.get("model") for m in (data.get("models") or []) if m.get("name") or m.get("model")]
             if models:
-                return models
+                return [m for m in models if _is_chat_model(m)]
     except Exception as e:
         logger.debug(f"Ollama /api/tags probe failed for {base}: {e}")
     # Fall back to curated list if the provider has a URL-based match (e.g. z.ai has no /models endpoint)
@@ -789,7 +817,7 @@ def _ping_endpoint(base_url: str, api_key: str = None, timeout: float = 1.5) -> 
                 return {
                     "reachable": False,
                     "status_code": r.status_code,
-                    "error": "That is Odysseus, not a model server. Use the Ollama URL, usually http://host.docker.internal:11434/v1 in Docker.",
+                    "error": "That is Lodestar, not a model server. Use the Ollama URL, usually http://host.docker.internal:11434/v1 in Docker.",
                 }
             return {"reachable": False, "status_code": r.status_code, "error": f"HTTP {r.status_code} redirect"}
         if 200 <= r.status_code < 300:
@@ -1466,7 +1494,7 @@ def setup_model_routes(model_discovery):
     def discover_local(request: Request):
         """Scan local network for model servers on common ports."""
         require_admin(request)
-        return model_discovery.discover_models()
+        return model_discovery.discover_models(fresh=True)
 
     # ---- Admin: model endpoints CRUD ----
 
@@ -1571,7 +1599,7 @@ def setup_model_routes(model_discovery):
         from src.endpoint_resolver import resolve_url
         base_url = resolve_url(base_url)
         # In Docker, manually added loopback URLs usually point at a host-local
-        # server. Cookbook local serves are launched inside Odysseus itself, so
+        # server. Cookbook local serves are launched inside Lodestar itself, so
         # keep those container-local when the frontend marks them as such.
         base_url = _rewrite_loopback_for_docker(base_url, container_local=_truthy(container_local))
 
@@ -1719,12 +1747,19 @@ def setup_model_routes(model_discovery):
             )
             db.add(ep)
             db.commit()
-            # Auto-set as default chat endpoint if none configured yet. Seed
-            # the first CHAT model (not raw model_ids[0]) so we don't pin the
-            # global default to an embedding/tts/etc. entry a provider happens
-            # to list first.
+            # Auto-set as default chat endpoint when none is usable yet — either
+            # nothing is configured, or the configured default points at an
+            # endpoint that is now missing/disabled (#3586). Seed the first CHAT
+            # model (not raw model_ids[0]) so we don't pin the global default to
+            # an embedding/tts/etc. entry a provider happens to list first.
             settings = _load_settings()
-            if not settings.get("default_endpoint_id"):
+            enabled_ids = {
+                e.id
+                for e in db.query(ModelEndpoint).filter(
+                    ModelEndpoint.is_enabled == True  # noqa: E712
+                ).all()
+            }
+            if _default_endpoint_needs_assignment(settings.get("default_endpoint_id") or "", enabled_ids):
                 from src.endpoint_resolver import _first_chat_model
                 settings["default_endpoint_id"] = ep.id
                 settings["default_model"] = _first_chat_model(model_ids) or ""
