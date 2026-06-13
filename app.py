@@ -731,6 +731,8 @@ from routes.code_routes import setup_code_routes
 app.include_router(setup_code_routes())
 from routes.workspace_routes import setup_workspace_routes
 app.include_router(setup_workspace_routes())
+from routes.prompt_routes import setup_prompt_routes
+app.include_router(setup_prompt_routes())
 
 # Notes (Google Keep-style notes/todos)
 from routes.note_routes import setup_note_routes
