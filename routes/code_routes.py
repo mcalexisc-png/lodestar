@@ -102,6 +102,149 @@ def setup_code_routes() -> APIRouter:
             raise HTTPException(500, f"Failed to write file: {e}")
         return {"path": resolved, "ok": True}
 
+    # ── Git panel ──
+
+    @router.get("/git/status")
+    async def git_status(request: Request):
+        require_user(request)
+        root = _get_workspace_root()
+        git_dir = os.path.join(root, ".git")
+        if not os.path.isdir(git_dir):
+            raise HTTPException(400, "Not a git repository")
+        try:
+            branch = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                cwd=root, capture_output=True, text=True, timeout=10,
+            ).stdout.strip()
+            status_proc = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=root, capture_output=True, text=True, timeout=10,
+            )
+            files = []
+            for line in status_proc.stdout.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                files.append({"status": line[:2].strip() or "?", "path": line[3:].strip()})
+            log_proc = subprocess.run(
+                ["git", "log", "--oneline", "-10"],
+                cwd=root, capture_output=True, text=True, timeout=10,
+            )
+            log = []
+            for line in log_proc.stdout.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split(" ", 1)
+                log.append({"hash": parts[0], "message": parts[1] if len(parts) > 1 else ""})
+            return {"branch": branch, "files": files, "log": log}
+        except subprocess.TimeoutExpired:
+            raise HTTPException(504, "git status timed out")
+        except Exception as e:
+            raise HTTPException(500, f"git status failed: {e}")
+
+    @router.post("/git/commit")
+    async def git_commit(request: Request):
+        require_user(request)
+        body = await request.json()
+        message = (body or {}).get("message", "").strip()
+        if not message:
+            raise HTTPException(400, "Commit message is required")
+        root = _get_workspace_root()
+        git_dir = os.path.join(root, ".git")
+        if not os.path.isdir(git_dir):
+            raise HTTPException(400, "Not a git repository")
+        try:
+            add_result = subprocess.run(
+                ["git", "add", "-A"],
+                cwd=root, capture_output=True, text=True, timeout=30,
+            )
+            if add_result.returncode != 0:
+                raise HTTPException(500, f"git add failed: {add_result.stderr.strip()}")
+            commit_result = subprocess.run(
+                ["git", "commit", "-m", message],
+                cwd=root, capture_output=True, text=True, timeout=30,
+            )
+            if commit_result.returncode != 0:
+                raise HTTPException(500, f"git commit failed: {commit_result.stderr.strip()}")
+            return {"ok": True, "message": commit_result.stdout.strip()}
+        except subprocess.TimeoutExpired:
+            raise HTTPException(504, "git commit timed out")
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(500, f"git commit failed: {e}")
+
+    @router.post("/git/ai-commit-msg")
+    async def git_ai_commit_msg(request: Request):
+        require_user(request)
+        root = _get_workspace_root()
+        git_dir = os.path.join(root, ".git")
+        if not os.path.isdir(git_dir):
+            raise HTTPException(400, "Not a git repository")
+        try:
+            diff = subprocess.run(
+                ["git", "diff", "--cached", "--stat"],
+                cwd=root, capture_output=True, text=True, timeout=10,
+            )
+            diff_staged = subprocess.run(
+                ["git", "diff", "--cached"],
+                cwd=root, capture_output=True, text=True, timeout=10,
+            )
+            diff_working = subprocess.run(
+                ["git", "diff"],
+                cwd=root, capture_output=True, text=True, timeout=10,
+            )
+            combined = diff_staged.stdout + diff_working.stdout
+            summary = diff.stdout.strip()
+            if not combined.strip():
+                add_result = subprocess.run(
+                    ["git", "add", "-A"],
+                    cwd=root, capture_output=True, text=True, timeout=30,
+                )
+                if add_result.returncode == 0:
+                    diff_staged2 = subprocess.run(
+                        ["git", "diff", "--cached"],
+                        cwd=root, capture_output=True, text=True, timeout=10,
+                    )
+                    combined = diff_staged2.stdout
+                    summary = summary or subprocess.run(
+                        ["git", "diff", "--cached", "--stat"],
+                        cwd=root, capture_output=True, text=True, timeout=10,
+                    ).stdout.strip()
+            if not combined.strip():
+                return {"message": "No changes to commit"}
+            from src.endpoint_resolver import resolve_endpoint
+            from src.llm_core import llm_call_async
+            user = get_current_user(request)
+            url, model, headers = resolve_endpoint("task", owner=user or None)
+            if not url or not model:
+                url, model, headers = resolve_endpoint("default", owner=user or None)
+            if not url or not model:
+                return {"message": "feat: update code"}
+            prompt = (
+                "Generate a concise git commit message (one line, 72 chars max) "
+                "for the following diff. Use conventional commit format "
+                "(feat:, fix:, refactor:, chore:, docs:, etc.).\n\n"
+                f"Summary:\n{summary}\n\n"
+                f"Diff (first 4000 chars):\n{combined[:4000]}"
+            )
+            try:
+                response = await llm_call_async(
+                    url, model,
+                    [{"role": "system", "content": "You generate concise git commit messages. Reply with only the commit message, no extra text."},
+                     {"role": "user", "content": prompt}],
+                    temperature=0.1, max_tokens=100, headers=headers, timeout=30,
+                )
+                msg = response.strip().split("\n")[0][:72].strip()
+                return {"message": msg or "feat: update code"}
+            except Exception:
+                return {"message": "feat: update code"}
+        except subprocess.TimeoutExpired:
+            return {"message": "fix: resolve issues"}
+        except Exception as e:
+            return {"message": f"chore: {e}"[:72]}
+
     # ── Snippets CRUD ──
 
     @router.get("/snippets")
