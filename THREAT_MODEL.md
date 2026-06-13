@@ -30,6 +30,7 @@ Lodestar is designed for **trusted users on a private network**, not public expo
 | Model serving | ✓ | ✗ |
 | Vault | ✓ | ✗ |
 | Settings | ✓ | ✗ |
+| UI panel control | ✓ | ✓ |
 
 Non-admin defaults are in `core/auth.py:DEFAULT_PRIVILEGES`. Tool enforcement is in `src/tool_security.py:NON_ADMIN_BLOCKED_TOOLS`. Any tool whose name starts with `mcp__` is also blocked for non-admins. Admins always get full access regardless of stored privilege values.
 
@@ -68,6 +69,38 @@ External content that reaches the LLM is treated as untrusted via `src/prompt_se
 - `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer` everywhere.
 - **CSP:** nonce-based `script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net`. `style-src 'unsafe-inline'` is intentionally kept — `static/index.html` ships inline `<style>` blocks and JS modules set `style=""` attributes at runtime. Inline styles do not execute script so the risk is visual-only. Removing this requires templating the HTML files and auditing all JS-set style attributes.
 
+## Plugin System (Phases 2–4)
+
+### In-process plugins (Tier 2)
+
+- Plugins declare capabilities (`net`, `fs`, `shell`) in their manifest.
+- Capability enforcement is best-effort: the host checks `require_capability()` calls, but a plugin that ignores the check is not blocked by the OS.
+- Plugins run as the app process user with full network and filesystem access.
+- Plugin handlers are lazy-imported on first use; unused plugins cost nothing at startup.
+- Plugin UI panels use a fixed widget vocabulary (no arbitrary JS injection) or sandboxed iframes (no `allow-same-origin`).
+
+### MCP servers (Tier 1)
+
+- Out-of-process, language-agnostic, speak the Model Context Protocol.
+- Per-server tool allowlists and denylists enforced at the execution boundary (not just hidden from the model).
+- Non-admin users are blocked from all `mcp__*` tools.
+- Third-party MCP servers can supply malicious tool schemas; schema sanitization caps token sizes but does not eliminate schema-based prompt injection.
+
+### Tool policy layers
+
+1. **User-disabled tools** — per-server `disabled_tools` / `allowed_tools` in DB.
+2. **Plan mode** — read-only allowlist; known mutators denied.
+3. **Guide-only mode** — all tools blocked (heuristic detection).
+4. **Admin gating** — `NON_ADMIN_BLOCKED_TOOLS` set (40+ tools) + `mcp__*` blanket block for non-admins.
+
+## Embedded Vector Store (sqlite-vec)
+
+- Stores embeddings in `data/vectors.db` (separate from `app.db`).
+- No network service — fully embedded, single-process.
+- The `vec0` SQLite extension is loaded via `conn.enable_load_extension(True)` then immediately disabled. Supply-chain risk if the extension binary is tampered with.
+- Memory text lives in `memory.json`; the vector store is a rebuildable index.
+- No encryption at rest (same as `data/app.db`).
+
 ## Known Gaps
 
 These are open, acknowledged, and contributor help is welcome:
@@ -79,3 +112,15 @@ These are open, acknowledged, and contributor help is welcome:
 3. **`src/search/` partial consolidation.** `src.search.core` and `src.search.providers` correctly alias `services.search` via `sys.modules` replacement. `analytics`, `cache`, `content`, `query`, and `ranking` are still independent copies that can drift. The SSRF regression tests in `tests/test_webhook_ssrf_resilience.py` test `src.webhook_manager` directly (separate from search), so the safety net there is intact. See #1058.
 
 4. **Token scopes are coarse.** There is no way to grant a session a subset of the owning user's privileges. Companion/mobile tokens carry either `chat` or `admin` scope with no per-capability granularity.
+
+5. **No per-tool approval gate.** Admins can execute high-risk tools (shell, file write, email send) without explicit confirmation. A prompt-injection in an admin session can run arbitrary commands. There is no "require user approval before executing this specific tool" mechanism.
+
+6. **Model endpoint API keys stored in plaintext SQLite.** The `ModelEndpoint` table stores `api_key` as plaintext, unlike email credentials which use Fernet encryption. A local file read of `data/app.db` exposes LLM API keys.
+
+7. **MCP schema injection.** Third-party MCP servers supply tool schemas that are rendered into the LLM prompt. Schema sanitization caps token sizes but a malicious server can still craft schemas that influence model behavior.
+
+8. **Incomplete executable upload blocklist.** The upload handler blocks common executable extensions (`.exe`, `.dll`, `.bat`, `.cmd`, `.vbs`, `.ps1`) but does not block `.scr`, `.com`, `.pif`, or other less common formats. No antivirus/malware scanning.
+
+9. **No CSRF tokens.** Relies on `SameSite=Lax` cookies for CSRF protection. Generally sufficient for cookie-based auth but does not protect against subdomain attacks.
+
+10. **sqlite-vec extension supply chain.** The `vec0` SQLite extension is loaded from the Python package. A tampered extension binary could execute arbitrary code during load.

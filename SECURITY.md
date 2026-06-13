@@ -23,13 +23,36 @@ Security fixes are handled on the default branch until formal releases are cut.
 - Treat shell, model-serving, MCP, email, calendar, and vault features as privileged admin functionality.
 - Common internal-only ports are Lodestar `7000`, SearXNG `8080`, ntfy `8091`, ChromaDB `8100`, Ollama `11434`, and local model/provider APIs such as `8000-8020`.
 
+### Lite mode
+
+Lite mode (`LODESTAR_LITE=true`) reduces the attack surface by disabling
+ChromaDB, the Playwright browser MCP server, and reducing SQLite cache sizes.
+For memory-constrained or security-conscious single-user deployments, lite
+mode is the recommended default. Semantic search degrades to keyword search
+but all other features remain functional.
+
+### Plugin system
+
+In-process plugins (Tier 2) run inside the app process with no sandbox
+boundary. Capability enforcement (`net`, `fs`, `shell`) is best-effort for
+trusted code. For untrusted or third-party extensions, use MCP servers
+(Tier 1) which run as separate processes. See `docs/plugin-authoring.md`.
+
+### Agent tools
+
+Non-admin users are blocked from all high-risk tools (shell, Python, file
+read/write, email, MCP, model serving, vault, settings). Admins have full
+access by design. There is no per-tool approval gate — a prompt-injection
+reaching an admin session can execute arbitrary commands. Treat admin sessions
+as you would a root shell.
+
 ## Publishing A Fork
 
 Before pushing a public fork, run:
 
 ```bash
 git status --short
-git check-ignore -v .env data/auth.json data/app.db logs/compound.log odysseus.db
+git check-ignore -v .env data/auth.json data/app.db logs/compound.log
 git grep -n -I -E "(sk-[A-Za-z0-9_-]{20,}|xox[baprs]-|AIza[0-9A-Za-z_-]{20,}|Bearer [A-Za-z0-9._~+/-]{20,})" -- . ':!static/lib/**' ':!package-lock.json'
 ```
 
