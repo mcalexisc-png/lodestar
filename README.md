@@ -74,7 +74,12 @@ inside **Settings**. Only edit `.env` for deployment-level overrides like
 
 On first setup, Lodestar creates an admin account (`admin` unless
 `LODESTAR_ADMIN_USER` is set) and prints a temporary password in the terminal.
-For Docker installs, the same line is in `docker compose logs lodestar`.
+For Docker installs, find it with:
+
+```bash
+docker compose logs lodestar | grep -i "temporary password"
+```
+
 Use that for the first login, then change it in **Settings**.
 
 Contributing? See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, testing, and
