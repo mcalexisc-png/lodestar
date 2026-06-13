@@ -116,6 +116,17 @@ function _renderUI() {
           </div>
           <pre class="code-output-body" id="code-output-body"></pre>
         </div>
+        <div class="code-qa" id="code-qa" style="display:none">
+          <div class="code-qa-header">
+            <span>Codebase Q&A</span>
+            <button class="code-qa-toggle" id="code-qa-toggle">Ask</button>
+          </div>
+          <div class="code-qa-input-row" id="code-qa-input-row" style="display:none">
+            <input class="code-qa-input" id="code-qa-input" placeholder="Ask about the codebase..." />
+            <button class="code-qa-send" id="code-qa-send">Ask</button>
+          </div>
+          <div class="code-qa-results" id="code-qa-results"></div>
+        </div>
       </div>
     </div>
   `;
@@ -127,6 +138,15 @@ function _renderUI() {
   document.getElementById('code-output-copy')?.addEventListener('click', () => {
     const body = document.getElementById('code-output-body');
     if (body) navigator.clipboard.writeText(body.textContent).catch(() => {});
+  });
+
+  document.getElementById('code-qa-toggle')?.addEventListener('click', () => {
+    const row = document.getElementById('code-qa-input-row');
+    if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
+  });
+  document.getElementById('code-qa-send')?.addEventListener('click', _askCodebaseQa);
+  document.getElementById('code-qa-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') _askCodebaseQa();
   });
 
   document.querySelectorAll('.code-tab').forEach(tab => {
@@ -745,12 +765,56 @@ function _wireSnippetButtons() {
 }
 
 async function _indexProject() {
+  _showOutput('Index', 'Indexing workspace...');
   try {
     const res = await fetch(`${API}/index`, {method: 'POST'});
     const data = await res.json();
     _showOutput('Index', data.message || 'Indexing complete');
+    _showQaPanel();
   } catch (e) {
     _showOutput('Index', e.message);
+  }
+}
+
+function _showQaPanel() {
+  const panel = document.getElementById('code-qa');
+  if (panel) panel.style.display = '';
+}
+
+async function _askCodebaseQa() {
+  const input = document.getElementById('code-qa-input');
+  const results = document.getElementById('code-qa-results');
+  if (!input || !results) return;
+  const question = input.value.trim();
+  if (!question) return;
+
+  results.innerHTML = '<div class="code-qa-thinking">Thinking...</div>';
+  try {
+    const res = await fetch(`${API}/qa`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({question}),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      results.innerHTML = `<div class="code-qa-error">Error: ${_esc(text)}</div>`;
+      return;
+    }
+    const data = await res.json();
+    const fileRefs = (data.files || []).map(f =>
+      `<span class="code-qa-file" data-path="${_esc(f)}">${_esc(f)}</span>`
+    ).join(' ');
+    results.innerHTML = `
+      <div class="code-qa-answer">${_esc(data.response || '(empty)')}</div>
+      ${fileRefs ? `<div class="code-qa-refs">Files: ${fileRefs}</div>` : ''}
+      ${data.model ? `<div class="code-qa-model">Model: ${_esc(data.model)}</div>` : ''}
+    `;
+    results.querySelectorAll('.code-qa-file').forEach(el => {
+      el.addEventListener('click', () => _openFileInTab(el.dataset.path));
+    });
+    _showQaPanel();
+  } catch (e) {
+    results.innerHTML = `<div class="code-qa-error">${_esc(e.message)}</div>`;
   }
 }
 

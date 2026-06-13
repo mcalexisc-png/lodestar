@@ -503,6 +503,119 @@ def setup_code_routes() -> APIRouter:
             "duration_ms": duration,
         }
 
+    # ── Codebase index & Q&A ──
+
+    _index_cache = {}
+
+    @router.post("/index")
+    async def index_codebase(request: Request):
+        require_user(request)
+        root = _get_workspace_root()
+        try:
+            import mimetypes
+            total = 0
+            index_data = {}
+            gitignore_paths = set()
+            gitignore_file = os.path.join(root, ".gitignore")
+            if os.path.isfile(gitignore_file):
+                for line in Path(gitignore_file).read_text().splitlines():
+                    line = line.strip()
+                    if line and not line.startswith("#"):
+                        gitignore_paths.add(line.rstrip("/"))
+
+            for dirpath, dirnames, filenames in os.walk(root):
+                rel = os.path.relpath(dirpath, root)
+                if rel == ".":
+                    rel = ""
+                dirnames[:] = [d for d in dirnames if not d.startswith(".")
+                              and d not in ("node_modules", "__pycache__", "venv", ".venv", "env")
+                              and os.path.join(rel, d) not in gitignore_paths
+                              and not any(os.path.join(rel, d).startswith(p) for p in gitignore_paths if "/" in p)]
+                for fn in filenames:
+                    if fn.startswith(".") or fn in ("package-lock.json", "yarn.lock", "pnpm-lock.yaml"):
+                        continue
+                    fp = os.path.join(dirpath, fn)
+                    rel_path = os.path.join(rel, fn) if rel else fn
+                    mime, _ = mimetypes.guess_type(fn)
+                    if mime and not mime.startswith("text/"):
+                        continue
+                    try:
+                        size = os.path.getsize(fp)
+                        if size > 100 * 1024:
+                            continue
+                        preview = Path(fp).read_text(encoding="utf-8", errors="replace")[:2000]
+                        ext = Path(fn).suffix.lstrip(".") or ""
+                        index_data[rel_path] = {"path": rel_path, "ext": ext, "preview": preview, "size": size}
+                        total += 1
+                    except (OSError, UnicodeDecodeError):
+                        pass
+            _index_cache["files"] = index_data
+            _index_cache["count"] = total
+            return {"ok": True, "count": total, "message": f"Indexed {total} files"}
+        except Exception as e:
+            raise HTTPException(500, f"Indexing failed: {e}")
+
+    @router.post("/qa")
+    async def codebase_qa(request: Request):
+        require_user(request)
+        if LODESTAR_LITE:
+            raise HTTPException(403, "qa_disabled_lite_mode")
+        body = await request.json()
+        question = (body or {}).get("question", "").strip()
+        if not question:
+            raise HTTPException(400, "question is required")
+
+        if not _index_cache.get("files"):
+            return {"response": "No index found. Click Index first to scan the workspace.", "files": []}
+
+        from src.endpoint_resolver import resolve_endpoint
+        from src.llm_core import llm_call_async
+        user = get_current_user(request)
+
+        # Keyword search across indexed files
+        terms = question.lower().split()
+        results = []
+        for rel_path, info in _index_cache["files"].items():
+            lower_preview = info["preview"].lower()
+            score = sum(1 for t in terms if t in lower_preview)
+            if score > 0:
+                results.append((score, rel_path, info))
+
+        results.sort(key=lambda r: -r[0])
+        top_files = results[:10]
+        context_parts = []
+        file_refs = []
+        for score, rel_path, info in top_files:
+            snippet = info["preview"][:800]
+            context_parts.append(f"--- {rel_path} ---\n{snippet}")
+            file_refs.append(rel_path)
+
+        context = "\n\n".join(context_parts) if context_parts else "No relevant files found in the index."
+
+        url, model, headers = resolve_endpoint("task", owner=user or None)
+        if not url or not model:
+            url, model, headers = resolve_endpoint("default", owner=user or None)
+        if not url or not model:
+            return {"response": "No AI endpoint configured. Add one in Settings.", "files": file_refs}
+
+        prompt = (
+            "Answer the question based on the code context below. "
+            "Reference specific files and line patterns when possible.\n\n"
+            f"Question: {question}\n\n"
+            f"Relevant code:\n{context}"
+        )
+
+        try:
+            response = await llm_call_async(
+                url, model,
+                [{"role": "system", "content": "You are a codebase expert. Answer questions about the code concisely, referencing specific files."},
+                 {"role": "user", "content": prompt}],
+                temperature=0.2, max_tokens=2048, headers=headers, timeout=60,
+            )
+            return {"response": response.strip(), "files": file_refs, "model": model}
+        except Exception as e:
+            return {"response": f"AI call failed: {e}", "files": file_refs}
+
     return router
 
 
