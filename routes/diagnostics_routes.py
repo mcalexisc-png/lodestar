@@ -25,6 +25,7 @@ def setup_diagnostics_routes(
         """Consolidated degraded-state report for ChromaDB, SearXNG, email,
         ntfy, and provider endpoints. Non-intrusive probes — safe to poll."""
         require_admin(request)
+        from src.lazy_globals import rag_manager, memory_vector
         from src.service_health import collect_service_health
         return await collect_service_health(rag_manager, memory_vector)
 
@@ -41,6 +42,7 @@ def setup_diagnostics_routes(
     @router.get("/api/rag/stats")
     async def get_rag_stats(request: Request) -> Dict[str, Any]:
         require_admin(request)
+        from src.lazy_globals import rag_manager, rag_available
         if rag_available and rag_manager:
             return rag_manager.get_stats()
         return {"error": "RAG system not available"}

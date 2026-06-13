@@ -119,8 +119,9 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
         all_mem.append(new_entry)
         memory_manager.save(all_mem)
         # Sync vector index
-        if memory_vector and memory_vector.healthy:
-            memory_vector.add(new_entry["id"], text)
+        from src.lazy_globals import memory_vector as _mv
+        if _mv and _mv.healthy:
+            _mv.add(new_entry["id"], text)
         try:
             from src.event_bus import fire_event
             fire_event("memory_added", user)
@@ -319,9 +320,10 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
             raise HTTPException(400, "No default model configured — set one in Settings")
 
         user = _owner(request)
+        from src.lazy_globals import memory_vector as _mv
         result = await audit_memories(
             memory_manager,
-            memory_vector,
+            _mv,
             endpoint_url,
             model,
             headers,
@@ -534,9 +536,10 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
 
                 memory_manager.save(all_mem)
                 # Sync vector index (remove old, add updated)
-                if memory_vector and memory_vector.healthy:
-                    memory_vector.remove(memory_id)
-                    memory_vector.add(memory_id, text.strip())
+                from src.lazy_globals import memory_vector as _mv
+                if _mv and _mv.healthy:
+                    _mv.remove(memory_id)
+                    _mv.add(memory_id, text.strip())
                 return {"ok": True, "message": "Memory updated successfully"}
 
         raise HTTPException(404, f"Memory item {memory_id} not found")
@@ -556,8 +559,9 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
         all_mem = [m for m in all_mem if m["id"] != memory_id]
         memory_manager.save(all_mem)
         # Sync vector index
-        if memory_vector and memory_vector.healthy:
-            memory_vector.remove(memory_id)
+        from src.lazy_globals import memory_vector as _mv
+        if _mv and _mv.healthy:
+            _mv.remove(memory_id)
         return {"ok": True, "message": "Memory deleted successfully"}
 
     return router

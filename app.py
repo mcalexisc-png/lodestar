@@ -461,37 +461,20 @@ from services.youtube import init_youtube
 init_youtube()
 
 # ========= RAG (vector document RAG) =========
-# VectorRAG (ChromaDB-backed personal-document semantic search). Initialized
-# lazily via get_rag_manager() — returns None if ChromaDB isn't reachable
-# (no server running on the configured host:port), in which case personal-doc
-# routes return a clean 503 instead of busy-retrying every request.
-#
-# Note: this was previously hardcoded off because chromadb 1.4.1 / pydantic
-# 2.12 were mutually incompatible at the time. With the current pins
-# (chromadb 1.5.x + pydantic 2.13.x) the init works and Personal Docs
-# (POST /api/personal/add_directory etc.) is functional again.
-#
-# Under LODESTAR_LITE, skip this call entirely: get_rag_manager() would
-# otherwise import chromadb/fastembed and attempt a ChromaDB connection on
-# every cold start. Personal-doc routes already handle rag_manager=None /
-# rag_available=False with a clean 503, so this is behavior-preserving for
-# lite installs that don't run the ChromaDB container.
+# Deferred: actual chromadb import happens in _startup_event() below to avoid
+# paying the ~30 MB chromadb + embedding-function import cost at module load.
+# The module-level variables stay None until the lifespan task initializes them.
+# Routes already handle rag_manager=None / rag_available=False gracefully.
 from src.constants import LODESTAR_LITE as _LODESTAR_LITE
-if _LODESTAR_LITE:
-    rag_manager = None
-    rag_available = False
-    logger.info("Vector document RAG skipped (LODESTAR_LITE=true)")
-else:
-    from src.rag_singleton import get_rag_manager
-    rag_manager = get_rag_manager()
-    rag_available = rag_manager is not None
-    if rag_available:
-        logger.info("Vector document RAG initialized")
-    else:
-        logger.info(
-            "Vector document RAG not available at startup "
-            "(ChromaDB may not be reachable yet — routes will retry lazily)"
-        )
+rag_manager = None
+rag_available = False
+
+# Mutable container for deferred components. Route handlers import from this
+# at call time (not closure time) so they see values updated by
+# _startup_event(), not just the initial None.
+import src.lazy_globals
+src.lazy_globals.rag_manager = rag_manager
+src.lazy_globals.rag_available = rag_available
 
 # ========= IMPORT CONFIG =========
 from src.config import config
@@ -510,6 +493,7 @@ set_session_manager_instance(session_manager)
 app.state.session_manager = session_manager
 memory_manager    = components["memory_manager"]
 memory_vector     = components.get("memory_vector")
+src.lazy_globals.memory_vector = memory_vector
 upload_handler    = components["upload_handler"]
 app.state.upload_handler = upload_handler
 personal_docs_mgr = components["personal_docs_manager"]
@@ -897,7 +881,7 @@ app.router.lifespan_context = _lifespan
 
 
 async def _startup_event():
-    global upload_cleanup_task
+    global upload_cleanup_task, rag_manager, rag_available, memory_vector
     logger.info("Application starting up...")
     webhook_manager.set_loop(asyncio.get_running_loop())
     # Wipe any leftover incognito sessions from previous process — they're
@@ -946,6 +930,47 @@ async def _startup_event():
             logger.warning(f"MCP startup failed (non-critical): {type(e).__name__}: {e}")
 
     _startup_tasks.append(asyncio.create_task(_startup_mcp_connections()))
+
+    # ── Deferred heavy-component initialization ──
+    # These import numpy, chromadb, fastembed, and/or onnxruntime — loading
+    # them at module-import time regressed full-mode RSS by ~145 MB (Phase 4).
+    # Instead we spin them here as fire-and-forget tasks so the server starts
+    # accepting requests immediately; route handlers already degrade to 503 or
+    # keyword-only search when rag_manager/memory_vector is None.
+    async def _lazy_rag_init():
+        if _LODESTAR_LITE:
+            return
+        from src.rag_singleton import get_rag_manager
+        try:
+            rm = await asyncio.to_thread(get_rag_manager)
+        except Exception:
+            rm = None
+        global rag_manager, rag_available
+        rag_manager = rm
+        rag_available = rm is not None
+        import src.lazy_globals
+        src.lazy_globals.rag_manager = rm
+        src.lazy_globals.rag_available = rm is not None
+        # Patch ai_interaction module-level reference
+        from src.ai_interaction import set_rag_manager
+        set_rag_manager(rm, personal_docs_mgr)
+
+    async def _lazy_vector_init():
+        from src.app_initializer import deferred_init_vector_store
+        try:
+            store = await asyncio.to_thread(deferred_init_vector_store, components)
+        except Exception:
+            store = None
+        global memory_vector
+        memory_vector = store
+        import src.lazy_globals
+        src.lazy_globals.memory_vector = store
+        # Patch ai_interaction module-level reference
+        from src.ai_interaction import set_memory_manager
+        set_memory_manager(memory_manager, store)
+
+    _startup_tasks.append(asyncio.create_task(_lazy_rag_init()))
+    _startup_tasks.append(asyncio.create_task(_lazy_vector_init()))
 
     # Pre-warm the RAG tool index off the request path. Loading the local
     # embedding model + opening ChromaDB + indexing the built-in tools is a

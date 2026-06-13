@@ -410,9 +410,10 @@ def setup_chat_routes(
         session_manager.save_sessions()
 
         # Background tasks (memory, webhook, auto-name)
+        from src.lazy_globals import memory_vector as _mv
         run_post_response_tasks(
             sess, session_manager, session, message, reply, None,
-            ctx.uprefs, memory_manager, memory_vector, webhook_manager,
+            ctx.uprefs, memory_manager, _mv, webhook_manager,
             character_name=ctx.preset.character_name,
             owner=ctx.user,
             allow_background_extraction=not tool_policy.block_all_tool_calls,
@@ -1073,9 +1074,10 @@ def setup_chat_routes(
                                 )
                                 if _saved_id:
                                     yield f'data: {json.dumps({"type": "message_saved", "id": _saved_id})}\n\n'
+                                from src.lazy_globals import memory_vector as _mv
                                 run_post_response_tasks(
                                     sess, session_manager, session, message, full_response,
-                                    last_metrics, ctx.uprefs, memory_manager, memory_vector, webhook_manager,
+                                    last_metrics, ctx.uprefs, memory_manager, _mv, webhook_manager,
                                     incognito=incognito, compare_mode=compare_mode,
                                     character_name=ctx.preset.character_name,
                                     owner=_user,
@@ -1201,9 +1203,10 @@ def setup_chat_routes(
                                 )
                                 if _saved_id:
                                     yield f'data: {json.dumps({"type": "message_saved", "id": _saved_id})}\n\n'
+                                from src.lazy_globals import memory_vector as _mv
                                 run_post_response_tasks(
                                     sess, session_manager, session, message, full_response,
-                                    last_metrics, ctx.uprefs, memory_manager, memory_vector, webhook_manager,
+                                    last_metrics, ctx.uprefs, memory_manager, _mv, webhook_manager,
                                     incognito=incognito, compare_mode=compare_mode,
                                     character_name=ctx.preset.character_name,
                                                             agent_rounds=_agent_rounds,

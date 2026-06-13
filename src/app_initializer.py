@@ -53,39 +53,12 @@ def initialize_managers(base_dir: str, rag_manager=None) -> Dict[str, Any]:
     api_key_manager = APIKeyManager(DATA_DIR)
     preset_manager = PresetManager(DATA_DIR)
 
-    # Initialize the memory vector store via the backend selector (Phase 3).
-    # The selector picks: embedded sqlite-vec (single-user default), the
-    # server-backed ChromaDB store (full/multi-user when CHROMADB_HOST is set or
-    # vector_backend="chromadb"), or None (keyword-only). Lite mode without a
-    # hosted embedding endpoint resolves to None and never loads ONNX, so the
-    # idle-RSS baseline is preserved exactly as before.
+    # Memory vector store initialization is deferred to _startup_event() to
+    # avoid loading fastembed/onnxruntime at module-import time (~150 MB RSS
+    # regression, Phase 4 optimization). Components receive None here; dependent
+    # objects (NativeMemoryProvider, ChatProcessor) handle None gracefully and
+    # are patched in deferred_init_vector_store().
     memory_vector = None
-    try:
-        from src.providers.selection import (
-            select_embedding_provider,
-            select_vector_store,
-        )
-        from src.settings import load_settings
-
-        settings = load_settings()
-        embedding_provider = select_embedding_provider(settings, LODESTAR_LITE)
-        memory_vector = select_vector_store(settings, LODESTAR_LITE, embedding_provider)
-
-        if memory_vector is None:
-            logger.info("Memory vector store unavailable; using keyword memory search")
-        else:
-            # Rebuild the index from existing memories if it's empty (first boot
-            # after enabling a backend, or a fresh vectors.db).
-            if memory_vector.count() == 0:
-                existing = memory_manager.load()
-                if existing:
-                    memory_vector.rebuild(existing)
-                    logger.info(f"Rebuilt memory vector index from {len(existing)} existing entries")
-            stats = memory_vector.get_stats()
-            logger.info("Memory vector store initialized (%s)", stats.get("backend", "unknown"))
-    except Exception as e:
-        logger.warning(f"Memory vector store selection failed ({e}); keyword fallback")
-        memory_vector = None
 
     memory_provider_registry = MemoryProviderRegistry([
         NativeMemoryProvider(memory_manager, memory_vector),
@@ -131,3 +104,49 @@ def initialize_managers(base_dir: str, rag_manager=None) -> Dict[str, Any]:
         "current_presets": preset_manager.presets,
         "PERSONAL_INDEX": personal_docs_manager.index
     }
+
+
+def deferred_init_vector_store(components: Dict[str, Any]) -> Any:
+    """Initialize the vector store and wire it into dependent components.
+
+    Called from _startup_event() after the server starts, not at module
+    import time.  Skips fastembed/onnxruntime loading entirely for lite mode.
+    Patches NativeMemoryProvider and ChatProcessor so they see the store.
+    """
+    from src.providers.selection import select_embedding_provider, select_vector_store
+    from src.settings import load_settings
+
+    memory_manager = components["memory_manager"]
+    memory_vector = None
+    try:
+        settings = load_settings()
+        embedding_provider = select_embedding_provider(settings, LODESTAR_LITE)
+        memory_vector = select_vector_store(settings, LODESTAR_LITE, embedding_provider)
+
+        if memory_vector is None:
+            logger.info("Memory vector store unavailable; using keyword memory search")
+        else:
+            if memory_vector.count() == 0:
+                existing = memory_manager.load()
+                if existing:
+                    memory_vector.rebuild(existing)
+                    logger.info(f"Rebuilt memory vector index from {len(existing)} existing entries")
+            stats = memory_vector.get_stats()
+            logger.info("Memory vector store initialized (%s)", stats.get("backend", "unknown"))
+
+        # Patch dependent components
+        components["memory_vector"] = memory_vector
+        registry = components["memory_provider_registry"]
+        try:
+            native = registry.get("native")
+            if native is not None:
+                native.memory_vector = memory_vector
+        except KeyError:
+            pass
+        components["chat_processor"].memory_vector = memory_vector
+    except Exception as e:
+        logger.warning(f"Memory vector store selection failed ({e}); keyword fallback")
+        memory_vector = None
+        components["memory_vector"] = None
+
+    return memory_vector

@@ -4,7 +4,6 @@
 from dataclasses import dataclass
 from typing import List, Dict, Any
 
-from src.rag_manager import RAGManager
 from src.constants import CHROMA_DIR
 
 
@@ -36,6 +35,7 @@ class DocsService:
     """
 
     def __init__(self, persist_dir: str = CHROMA_DIR):
+        from src.rag_manager import RAGManager
         self.rag = RAGManager(persist_directory=persist_dir)
 
     async def query(self, query: str, top_k: int = 5) -> List[DocChunk]:
