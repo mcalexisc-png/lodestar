@@ -106,8 +106,8 @@ class BashTool:
         progress_cb = ctx.get("progress_cb")
         workspace = ctx.get("workspace")
         _subproc_env = ctx.get("subproc_env")
-        proc = await asyncio.create_subprocess_shell(
-            content,
+        proc = await asyncio.create_subprocess_exec(
+            "/bin/sh", "-c", content,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=_subproc_env,

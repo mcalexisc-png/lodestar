@@ -53,8 +53,8 @@ class ShellService:
 
         proc = None
         try:
-            proc = await asyncio.create_subprocess_shell(
-                command,
+            proc = await asyncio.create_subprocess_exec(
+                "/bin/sh", "-c", command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=cwd,
@@ -101,8 +101,8 @@ class ShellService:
         proc = None
         reader_tasks = []
         try:
-            proc = await asyncio.create_subprocess_shell(
-                command,
+            proc = await asyncio.create_subprocess_exec(
+                "/bin/sh", "-c", command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=self.cwd,

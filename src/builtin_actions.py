@@ -321,7 +321,7 @@ async def action_ssh_command(owner: str, command: str = "", host: str = "localho
             bash = find_bash()
             if bash:
                 return await _run_subprocess([bash, "-c", command], timeout=120, label="Command")
-            return await _run_subprocess(command, shell=True, timeout=120, label="Command")
+            return await _run_subprocess(["cmd", "/c", command], timeout=120, label="Command")
         return await _run_subprocess(["bash", "-c", command], timeout=120, label="Command")
     return await _run_subprocess(
         ["ssh", "-o", "ConnectTimeout=10", host, command], timeout=120, label="Command",
@@ -336,7 +336,9 @@ async def action_run_script(owner: str, script: str = "", host: str = "", **kwar
     if target_host in ("", "localhost", "127.0.0.1", "local"):
         if IS_WINDOWS and find_bash():
             return await _run_subprocess([find_bash(), "-c", script], timeout=300, label="Script")
-        return await _run_subprocess(script, shell=True, timeout=300, label="Script")
+        if IS_WINDOWS:
+            return await _run_subprocess(["cmd", "/c", script], timeout=300, label="Script")
+        return await _run_subprocess(["bash", "-c", script], timeout=300, label="Script")
     return await _run_subprocess(["ssh", target_host, script], timeout=300, label="Script")
 
 
@@ -346,7 +348,9 @@ async def action_run_local(owner: str, script: str = "", **kwargs) -> Tuple[str,
         return "No script specified", False
     if IS_WINDOWS and find_bash():
         return await _run_subprocess([find_bash(), "-c", script], timeout=300, label="Script")
-    return await _run_subprocess(script, shell=True, timeout=300, label="Script")
+    if IS_WINDOWS:
+        return await _run_subprocess(["cmd", "/c", script], timeout=300, label="Script")
+    return await _run_subprocess(["bash", "-c", script], timeout=300, label="Script")
 
 
 async def action_tidy_research(owner: str, **kwargs) -> Tuple[str, bool]:

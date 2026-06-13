@@ -469,8 +469,8 @@ def setup_codex_routes(
         """Run a shell command, return {exit_code, stdout, stderr}."""
         import asyncio as _asyncio
         try:
-            proc = await _asyncio.create_subprocess_shell(
-                cmd,
+            proc = await _asyncio.create_subprocess_exec(
+                "/bin/sh", "-c", cmd,
                 stdout=_asyncio.subprocess.PIPE,
                 stderr=_asyncio.subprocess.PIPE,
             )

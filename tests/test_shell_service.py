@@ -34,7 +34,7 @@ class _FakeProcess:
 
 
 def test_shell_stream_uses_running_loop_for_deadline(monkeypatch):
-    async def fake_create_subprocess_shell(*args, **kwargs):
+    async def fake_create_subprocess_exec(*args, **kwargs):
         return _FakeProcess()
 
     def fail_get_event_loop():
@@ -42,8 +42,8 @@ def test_shell_stream_uses_running_loop_for_deadline(monkeypatch):
 
     monkeypatch.setattr(
         shell_service.asyncio,
-        "create_subprocess_shell",
-        fake_create_subprocess_shell,
+        "create_subprocess_exec",
+        fake_create_subprocess_exec,
     )
     monkeypatch.setattr(shell_service.asyncio, "get_event_loop", fail_get_event_loop)
 

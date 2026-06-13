@@ -705,8 +705,8 @@ def setup_cookbook_routes() -> APIRouter:
                 logger.error(f"Local detached download launch failed: {e}")
                 return {"ok": False, "error": str(e), "session_id": session_id}
         else:
-            proc = await asyncio.create_subprocess_shell(
-                setup_cmd,
+            proc = await asyncio.create_subprocess_exec(
+                "/bin/sh", "-c", setup_cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -761,8 +761,8 @@ def setup_cookbook_routes() -> APIRouter:
                 cmd = f'ssh {_pf}{host} "python -" < \'{scan_py}\''
             else:
                 cmd = f"ssh {_pf}{host} 'python3 -' < '{scan_py}'"
-            proc = await asyncio.create_subprocess_shell(
-                cmd,
+            proc = await asyncio.create_subprocess_exec(
+                "/bin/sh", "-c", cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=str(Path.home()),
@@ -1573,8 +1573,8 @@ def setup_cookbook_routes() -> APIRouter:
                 logger.error(f"Local detached serve launch failed: {e}")
                 return {"ok": False, "error": str(e), "session_id": session_id}
         else:
-            proc = await asyncio.create_subprocess_shell(
-                setup_cmd,
+            proc = await asyncio.create_subprocess_exec(
+                "/bin/sh", "-c", setup_cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -1653,8 +1653,8 @@ def setup_cookbook_routes() -> APIRouter:
         detect_cmd = f'ssh {pf}{host} "echo %OS%"'
         platform = "linux"
         try:
-            proc = await asyncio.create_subprocess_shell(
-                detect_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            proc = await asyncio.create_subprocess_exec(
+                "/bin/sh", "-c", detect_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
             out = stdout.decode().strip()
@@ -1663,8 +1663,8 @@ def setup_cookbook_routes() -> APIRouter:
             else:
                 # Check for Termux
                 detect_cmd2 = f"ssh {pf}{host} 'test -d /data/data/com.termux && echo termux || echo linux'"
-                proc2 = await asyncio.create_subprocess_shell(
-                    detect_cmd2, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                proc2 = await asyncio.create_subprocess_exec(
+                    "/bin/sh", "-c", detect_cmd2, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                 )
                 stdout2, _ = await asyncio.wait_for(proc2.communicate(), timeout=10)
                 platform = stdout2.decode().strip()
@@ -1715,8 +1715,8 @@ def setup_cookbook_routes() -> APIRouter:
             cmd = f"ssh {pf}{host} '{setup_script}'"
 
         try:
-            proc = await asyncio.create_subprocess_shell(
-                cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            proc = await asyncio.create_subprocess_exec(
+                "/bin/sh", "-c", cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
             output = stdout.decode() + stderr.decode()
@@ -1734,8 +1734,8 @@ def setup_cookbook_routes() -> APIRouter:
         if host:
             pf = f"-p {ssh_port} " if ssh_port and ssh_port != "22" else ""
             cmd = f"ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no {pf}{host} '{query}'"
-            proc = await asyncio.create_subprocess_shell(
-                cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            proc = await asyncio.create_subprocess_exec(
+                "/bin/sh", "-c", cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
         else:
             proc = await asyncio.create_subprocess_exec(
@@ -1764,12 +1764,12 @@ def setup_cookbook_routes() -> APIRouter:
                 "else echo 'No POSIX shell found for GPU probe' >&2; exit 127; fi"
             )
             cmd = f"ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no {pf}{host} {shlex.quote(remote_cmd)}"
-            proc = await asyncio.create_subprocess_shell(
-                cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            proc = await asyncio.create_subprocess_exec(
+                "/bin/sh", "-c", cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
         else:
-            proc = await asyncio.create_subprocess_shell(
-                cmd_text, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            proc = await asyncio.create_subprocess_exec(
+                "/bin/sh", "-c", cmd_text, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
         try:
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
@@ -2055,8 +2055,8 @@ def setup_cookbook_routes() -> APIRouter:
             if host:
                 pf = f"-p {req.ssh_port} " if req.ssh_port and req.ssh_port != "22" else ""
                 cmd = f"ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no {pf}{host} '{kill_cmd}'"
-                proc = await asyncio.create_subprocess_shell(
-                    cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                proc = await asyncio.create_subprocess_exec(
+                    "/bin/sh", "-c", cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                 )
             elif IS_WINDOWS:
                 # No `kill` binary / POSIX signals on Windows. taskkill /F /T tears

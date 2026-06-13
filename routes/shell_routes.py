@@ -401,7 +401,7 @@ class ShellExecRequest(BaseModel):
 async def _create_shell(command: str, **kwargs):
     """Spawn a shell subprocess for `command`.
 
-    POSIX: /bin/sh via create_subprocess_shell (unchanged behaviour).
+    POSIX: /bin/sh -c via create_subprocess_exec.
     Windows: prefer a real bash (Git Bash/WSL) so bash-syntax commands behave
     the same as on Linux; fall back to cmd.exe when no bash is installed.
     Powershell commands are executed directly via cmd.exe /c to avoid quoting
@@ -413,11 +413,11 @@ async def _create_shell(command: str, **kwargs):
         # bash -c mangles $env:VAR syntax and breaks the command.
         cmd_trim = command.strip()
         if cmd_trim.startswith("powershell") or cmd_trim.startswith("cmd "):
-            return await asyncio.create_subprocess_shell(command, **kwargs)
+            return await asyncio.create_subprocess_exec("cmd", "/c", command, **kwargs)
         bash = find_bash()
         if bash:
             return await asyncio.create_subprocess_exec(bash, "-c", command, **kwargs)
-    return await asyncio.create_subprocess_shell(command, **kwargs)
+    return await asyncio.create_subprocess_exec("/bin/sh", "-c", command, **kwargs)
 
 
 async def _exec_shell(command: str, timeout: int = EXEC_TIMEOUT) -> Dict[str, Any]:
@@ -467,8 +467,8 @@ async def _generate_pty(cmd: str, timeout: int, request: Request):
     flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
     fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
 
-    proc = await asyncio.create_subprocess_shell(
-        cmd,
+    proc = await asyncio.create_subprocess_exec(
+        "/bin/sh", "-c", cmd,
         stdin=slave_fd,
         stdout=slave_fd,
         stderr=slave_fd,
@@ -623,8 +623,8 @@ async def _generate_tmux(cmd: str, request: Request):
 
     tmux_cmd = f"tmux new-session -d -s {session_id} {shlex.quote(str(script_path))}"
 
-    proc = await asyncio.create_subprocess_shell(
-        tmux_cmd,
+    proc = await asyncio.create_subprocess_exec(
+        "/bin/sh", "-c", tmux_cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -671,8 +671,8 @@ async def _generate_tmux(cmd: str, request: Request):
             break
 
         # Check if tmux session is still alive
-        check = await asyncio.create_subprocess_shell(
-            f"tmux has-session -t {session_id} 2>/dev/null",
+        check = await asyncio.create_subprocess_exec(
+            "/bin/sh", "-c", f"tmux has-session -t {session_id} 2>/dev/null",
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )
