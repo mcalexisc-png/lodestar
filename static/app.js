@@ -1,5 +1,5 @@
 // ============================================
-// Odysseus UI — Main Application Orchestrator
+// Lodestar UI — Main Application Orchestrator
 // ES6 module — entry point, no exports (wires all modules together)
 // ============================================
 import Storage from './js/storage.js';
@@ -20,23 +20,10 @@ import sessionModule from './js/sessions.js';
 import memoryModule from './js/memory.js';
 import voiceRecorderModule from './js/voiceRecorder.js';
 import censorModule from './js/censor.js';
-import galleryModule from './js/gallery.js';
-import tasksModule from './js/tasks.js';
-import calendarModule from './js/calendar.js';
-import notesModule from './js/notes.js';
-import adminModule from './js/admin.js';
 import settingsModule from './js/settings.js';
-// Eagerly bind unified minimize/restore behavior across all tool modals.
-import './js/modalManager.js';
 // Desktop window tiling — drag a modal near an edge/corner to snap.
 import './js/tileManager.js';
 import themeModule from './js/theme.js';
-// IMPORTANT: import cookbook.js with NO ?v= query — the same plain specifier
-// every other importer (cookbook-hwfit.js / cookbook-diagnosis.js) uses. A query
-// mismatch makes the browser load cookbook.js twice as separate modules (two
-// _envState objects), which broke server selection. Keep all cookbook imports
-// unversioned so this can't recur.
-import cookbookModule from './js/cookbook.js';
 import groupModule from './js/group.js';
 import * as researchPanelModule from './js/research/panel.js';
 import ttsModule from './js/tts-ai.js';
@@ -45,12 +32,19 @@ import { initKeyboardShortcuts } from './js/keyboard-shortcuts.js';
 import { initSidebarLayout, syncRailSide } from './js/sidebar-layout.js';
 import { initSectionCollapse, initSectionDrag } from './js/section-management.js';
 
+// ── Lazy-loaded route modules (imported on first use, not at page load) ──
+let galleryModule = null;
+let tasksModule = null;
+let calendarModule = null;
+let notesModule = null;
+let adminModule = null;
+let cookbookModule = null;
+let codeModule = null;
+
 const API_BASE = window.location.origin;
 window.themeModule = themeModule;
 window.sessionModule = sessionModule;
 window.uiModule = uiModule;
-window.adminModule = adminModule;
-window.cookbookModule = cookbookModule;
 
 // Redirect to login on 401 from any fetch
 const _origFetch = window.fetch;
@@ -76,7 +70,7 @@ async function _refreshDefaultChat() {
     const d = await (await fetch('/api/default-chat')).json();
     if (d && d.endpoint_url && d.model) {
       _defaultChat = d;
-      try { window.__odysseusDefaultChat = d; } catch (_) {}
+      try { window.__lodestarDefaultChat = d; } catch (_) {}
       return d;
     }
   } catch (_) {}
@@ -350,7 +344,7 @@ function initializeEventListeners() {
       e.stopPropagation();
       exportMenu.classList.remove('open');
       const meta = sessionModule.getSessions().find(s => s.id === sessionModule.getCurrentSessionId());
-      const sessionName = meta ? meta.name : 'Odysseus Chat';
+      const sessionName = meta ? meta.name : 'Lodestar Chat';
       const originalTitle = document.title;
       document.title = sessionName;
       const chatHistory = document.getElementById('chat-history');
@@ -837,11 +831,11 @@ function initializeEventListeners() {
   const toolCookbookBtn = el('tool-cookbook-btn');
   if (toolCookbookBtn) {
     toolCookbookBtn.addEventListener('click', async () => {
+      if (!cookbookModule) cookbookModule = (await import('./js/cookbook.js')).default;
+      window.cookbookModule = cookbookModule;
       if (!cookbookModule) return;
-      // Try minimized→restore or open→minimize via the manager first
       const Modals = await import('./js/modalManager.js');
       if (!Modals.toggle('cookbook-modal')) {
-        // Not registered yet → fresh open
         cookbookModule.open();
       }
     });
@@ -866,6 +860,7 @@ function initializeEventListeners() {
   const toolGalleryBtn = el('tool-gallery-btn');
   if (toolGalleryBtn) {
     toolGalleryBtn.addEventListener('click', async () => {
+      if (!galleryModule) galleryModule = (await import('./js/gallery.js')).default;
       if (!galleryModule) return;
       const Modals = await import('./js/modalManager.js');
       if (!Modals.toggle('gallery-modal')) {
@@ -884,7 +879,8 @@ function initializeEventListeners() {
     btn.addEventListener("click", () => {
     });
   });
-    toolTasksBtn.addEventListener('click', () => {
+    toolTasksBtn.addEventListener('click', async () => {
+      if (!tasksModule) tasksModule = (await import('./js/tasks.js')).default;
       if (tasksModule) {
         tasksModule.isTasksOpen() ? tasksModule.closeTasks() : tasksModule.openTasks();
       }
@@ -895,10 +891,9 @@ function initializeEventListeners() {
   const toolCalendarBtn = el('tool-calendar-btn');
   if (toolCalendarBtn) {
     toolCalendarBtn.addEventListener('click', async () => {
+      if (!calendarModule) calendarModule = (await import('./js/calendar.js')).default;
       if (!calendarModule) return;
       const Modals = await import('./js/modalManager.js');
-      // toggle returns true when a registered modal was minimized/restored;
-      // returns false when nothing is registered → open fresh.
       if (!Modals.toggle('calendar-modal')) {
         if (calendarModule.isCalendarOpen()) calendarModule.closeCalendar();
         else calendarModule.openCalendar();
@@ -909,16 +904,75 @@ function initializeEventListeners() {
   // Notes tool button
   const toolNotesBtn = el('tool-notes-btn');
   if (toolNotesBtn) {
-    toolNotesBtn.addEventListener('click', () => {
+    toolNotesBtn.addEventListener('click', async () => {
+      if (!notesModule) notesModule = (await import('./js/notes.js')).default;
       if (notesModule) {
         notesModule.togglePanel();
       }
     });
   }
-  // Refresh notes due-reminder badge on load and every 5 minutes
-  if (notesModule && notesModule.refreshDueBadge) {
-    notesModule.refreshDueBadge();
-    setInterval(() => notesModule.refreshDueBadge(), 5 * 60 * 1000);
+  // Refresh notes due-reminder badge — loaded lazily for first use
+  (async () => {
+    if (!notesModule) notesModule = (await import('./js/notes.js')).default;
+    if (notesModule && notesModule.refreshDueBadge) {
+      notesModule.refreshDueBadge();
+      setInterval(() => notesModule.refreshDueBadge(), 5 * 60 * 1000);
+    }
+  })();
+
+  // Workspace switcher — load on startup
+  (async () => {
+    try {
+      const m = await import('./js/workspace.js');
+      if (m.default && m.default.loadWorkspaces) m.default.loadWorkspaces();
+    } catch (_) {}
+  })();
+
+  // Code tool button
+  const toolCodeBtn = el('tool-code-btn');
+  if (toolCodeBtn) {
+    toolCodeBtn.addEventListener('click', async () => {
+      if (!codeModule) codeModule = (await import('./js/code.js')).default;
+      if (codeModule) {
+        codeModule.isCodeOpen() ? codeModule.closeCodeView() : codeModule.openCodeView();
+      }
+    });
+  }
+
+  // Prompts tool button
+  let promptsModule = null;
+  const toolPromptsBtn = el('tool-prompts-btn');
+  if (toolPromptsBtn) {
+    toolPromptsBtn.addEventListener('click', async () => {
+      if (!promptsModule) promptsModule = (await import('./js/prompts.js')).default;
+      if (promptsModule) {
+        promptsModule.isOpen() ? promptsModule.closePanel() : promptsModule.openPanel();
+      }
+    });
+  }
+
+  // Approvals tool button
+  let approvalModule = null;
+  const toolApprovalBtn = el('tool-approval-btn');
+  if (toolApprovalBtn) {
+    toolApprovalBtn.addEventListener('click', async () => {
+      if (!approvalModule) approvalModule = (await import('./js/approvals.js')).default;
+      if (approvalModule) {
+        approvalModule.isOpen() ? approvalModule.closePanel() : approvalModule.openPanel();
+      }
+    });
+  }
+
+  // Read Later tool button
+  let readlaterModule = null;
+  const toolReadlaterBtn = el('tool-readlater-btn');
+  if (toolReadlaterBtn) {
+    toolReadlaterBtn.addEventListener('click', async () => {
+      if (!readlaterModule) readlaterModule = (await import('./js/readlater.js')).default;
+      if (readlaterModule) {
+        readlaterModule.isOpen() ? readlaterModule.closePanel() : readlaterModule.openPanel();
+      }
+    });
   }
 
   // URL-based panel routing — bookmark /calendar, /notes, /cookbook etc
@@ -984,14 +1038,11 @@ function initializeEventListeners() {
     }
   }
   const _routeOpen = {
-    '/notes':    () => {
+    '/notes':    async () => {
+      if (!notesModule) notesModule = (await import('./js/notes.js')).default;
       if (!notesModule) return;
       _collapseSidebarToRail();
       notesModule.openPanel();
-      // Promote to fullscreen-with-rail-visible. The pane wires up its own
-      // fullscreen toggle (#notes-fullscreen-toggle); piggyback on that
-      // path so the button icon flips and overflow:hidden gets applied
-      // alongside. Retry on rAF in case the panel mounts a tick later.
       const _go = () => {
         const btn = document.getElementById('notes-fullscreen-toggle');
         const pane = document.querySelector('.notes-pane');
@@ -1005,7 +1056,10 @@ function initializeEventListeners() {
         setTimeout(_go, 200);
       }
     },
-    '/calendar': () => calendarModule && calendarModule.openCalendar(),
+    '/calendar': async () => {
+      if (!calendarModule) calendarModule = (await import('./js/calendar.js')).default;
+      if (calendarModule) calendarModule.openCalendar();
+    },
     '/cookbook': () => document.getElementById('tool-cookbook-btn')?.click(),
     '/email':    () => {
       // Collapse the wide sidebar → icon rail (48px) so the user keeps
@@ -1043,6 +1097,19 @@ function initializeEventListeners() {
     '/memory':   () => document.getElementById('tool-memory-btn')?.click(),
     '/gallery':  () => document.getElementById('tool-gallery-btn')?.click(),
     '/tasks':    () => document.getElementById('tool-tasks-btn')?.click(),
+    '/code':     async () => {
+      if (!codeModule) codeModule = (await import('./js/code.js')).default;
+      if (codeModule) codeModule.openCodeView();
+    },
+    '/snippets': async () => {
+      if (!codeModule) codeModule = (await import('./js/code.js')).default;
+      if (codeModule) codeModule.openCodeView();
+      // open snippets tab after a short delay
+      setTimeout(() => {
+        const tab = document.querySelector('.code-tab[data-tab="snippets"]');
+        if (tab) tab.click();
+      }, 500);
+    },
     '/library':  () => sessionModule && sessionModule.openLibrary && sessionModule.openLibrary(),
   };
   const _opener = _routeOpen[urlPath];
@@ -1051,7 +1118,7 @@ function initializeEventListeners() {
   // click handler in emailInbox, sessionModule's loaded session list) are
   // still being wired up further down in this same function. Stash the
   // opener so it runs from sessionModule.loadSessions().finally() below.
-  if (_opener) window._odysseusRouteOpener = _opener;
+  if (_opener) window._lodestarRouteOpener = _opener;
 
   // Archive browser tool button
   const toolLibraryBtn = el('tool-library-btn');
@@ -1124,7 +1191,11 @@ function initializeEventListeners() {
     userBarProfile.addEventListener('click', () => settingsModule.open('account'));
   }
   if (userBarAdmin) {
-    userBarAdmin.addEventListener('click', () => adminModule.open());
+    userBarAdmin.addEventListener('click', async () => {
+      if (!adminModule) adminModule = (await import('./js/admin.js')).default;
+      window.adminModule = adminModule;
+      if (adminModule) adminModule.open();
+    });
   }
 
   // Fetch auth status — populate user bar and show admin button if admin
@@ -1159,7 +1230,7 @@ function initializeEventListeners() {
         if (!p.can_use_bash) {
           const bashToggle = document.getElementById('bash-toggle');
           if (bashToggle) bashToggle.closest('.chat-input-toggle')?.style.setProperty('display', 'none');
-          const bashBtn = document.getElementById('tool-bash-btn');
+          const bashBtn = document.getElementById('bash-toggle-btn');
           if (bashBtn) bashBtn.style.display = 'none';
         }
         // Hide document button
@@ -1176,11 +1247,7 @@ function initializeEventListeners() {
           const resOverflow = document.getElementById('overflow-research-btn');
           if (resOverflow) resOverflow.style.display = 'none';
         }
-        // Hide image generation options
-        if (!p.can_generate_images) {
-          const imgBtn = document.getElementById('tool-image-btn');
-          if (imgBtn) imgBtn.style.display = 'none';
-        }
+
       }
     })
     .catch(() => {});
@@ -2127,7 +2194,7 @@ function initializeEventListeners() {
       pickerWrap.classList.toggle('picker-auto-hidden', w < PICKER_HIDE_WIDTH);
       // Hide placeholder text
       if (textarea) {
-        textarea.setAttribute('placeholder', w < PLACEHOLDER_HIDE_WIDTH ? '' : 'Message Odysseus...');
+        textarea.setAttribute('placeholder', w < PLACEHOLDER_HIDE_WIDTH ? '' : 'Message Lodestar...');
       }
       // Hide entire bottom toolbar (tools, mode toggle) — only send button remains
       if (inputBottom) {
@@ -2409,7 +2476,11 @@ function initializeEventListeners() {
     'tool-library':        '#tool-library-btn',
     'tool-memory':         '#tool-memory-btn',
     'tool-notes':          '#tool-notes-btn',
+    'tool-prompts':        '#tool-prompts-btn',
+    'tool-approval':       '#tool-approval-btn',
+    'tool-readlater':      '#tool-readlater-btn',
     'tool-tasks':          '#tool-tasks-btn',
+    'tool-code':           '#tool-code-btn',
     'tool-theme':          '#tool-theme-btn',
     'user-bar':            '#user-bar-profile',
     'sidebar-settings-btn':'#user-bar-settings',
@@ -3337,7 +3408,7 @@ function initializeEventListeners() {
   // Keyboard shortcuts (extracted to js/keyboard-shortcuts.js)
   initKeyboardShortcuts({
     el, Storage, sessionModule, uiModule, chatModule,
-    adminModule, settingsModule, searchChatModule,
+    settingsModule, searchChatModule,
     _closeCompareIfActive, _deactivateIncognito, API_BASE
   });
   
@@ -3346,9 +3417,9 @@ function initializeEventListeners() {
 // ============================================
 // INITIALIZATION ON PAGE LOAD
 // ============================================
-function startOdysseusApp() {
-  if (window.__odysseusAppStarted) return;
-  window.__odysseusAppStarted = true;
+function startLodestarApp() {
+  if (window.__lodestarAppStarted) return;
+  window.__lodestarAppStarted = true;
   // Set CSS variables
   document.documentElement.style.setProperty('--line-height', '20px');
 
@@ -3422,8 +3493,12 @@ function startOdysseusApp() {
     'rail-archive':   'tool-library-btn',
     'rail-gallery':   'tool-gallery-btn',
     'rail-tasks':     'tool-tasks-btn',
+    'rail-code':      'tool-code-btn',
     'rail-calendar':  'tool-calendar-btn',
     'rail-notes':     'tool-notes-btn',
+    'rail-prompts':   'tool-prompts-btn',
+    'rail-approval':   'tool-approval-btn',
+    'rail-readlater':  'tool-readlater-btn',
     'rail-memory':    'tool-memory-btn',
     'rail-theme':     'tool-theme-btn',
     'rail-email':     'email-section-title',
@@ -3560,7 +3635,7 @@ function startOdysseusApp() {
   const _newChatIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
 
   // Expose icons globally so chat.js updateSubmitButton can use them
-  window._odysseusBtnIcons = { send: _sendIcon, mic: _micIcon, stop: _stopIcon, newChat: _newChatIcon };
+  window._lodestarBtnIcons = { send: _sendIcon, mic: _micIcon, stop: _stopIcon, newChat: _newChatIcon };
 
   function _isSttEnabled() {
     return voiceRecorderModule._sttProvider && voiceRecorderModule._sttProvider !== 'disabled';
@@ -3923,9 +3998,9 @@ function startOdysseusApp() {
         if (loader) { loader.style.opacity = '0'; setTimeout(() => loader.remove(), 300); }
         // Fire any URL route opener now that sessions + module wiring are
         // ready. Deferred from up top of init for exactly this reason.
-        if (window._odysseusRouteOpener) {
-          try { window._odysseusRouteOpener(); } catch (_) {}
-          window._odysseusRouteOpener = null;
+        if (window._lodestarRouteOpener) {
+          try { window._lodestarRouteOpener(); } catch (_) {}
+          window._lodestarRouteOpener = null;
         }
       });
   } else {
@@ -4084,7 +4159,7 @@ function startOdysseusApp() {
 }
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', startOdysseusApp, { once: true });
+  document.addEventListener('DOMContentLoaded', startLodestarApp, { once: true });
 } else {
-  startOdysseusApp();
+  startLodestarApp();
 }

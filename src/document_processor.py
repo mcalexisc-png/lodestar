@@ -260,12 +260,11 @@ def _resolve_vl_model(configured: str, owner: str | None = None) -> tuple:
     Uses admin-configured model if set, otherwise tries auto-detection
     of known vision-capable models across configured endpoints.
     """
-    from src.ai_interaction import _resolve_model
+    from src.ai_interaction import _resolve_model_sync
 
     if configured:
-        return _resolve_model(configured, owner=owner)
+        return _resolve_model_sync(configured, owner=owner)
 
-    # Auto-detect: try known vision-capable models in priority order
     candidates = [
         "gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini",
         "claude-sonnet-4-5-20250929", "claude-opus-4-20250514",
@@ -274,7 +273,7 @@ def _resolve_vl_model(configured: str, owner: str | None = None) -> tuple:
     ]
     for candidate in candidates:
         try:
-            return _resolve_model(candidate, owner=owner)
+            return _resolve_model_sync(candidate, owner=owner)
         except (ValueError, Exception):
             continue
 

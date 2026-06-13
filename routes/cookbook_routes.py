@@ -15,9 +15,11 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request, Depends
 
 from src.auth_helpers import require_user
+from src.constants import COOKBOOK_STATE_FILE
 from pydantic import BaseModel
 
 from core.middleware import require_admin
+from routes._validators import validate_remote_host, validate_ssh_port
 from core.platform_compat import (
     IS_WINDOWS,
     detached_popen_kwargs,
@@ -32,9 +34,8 @@ from routes.shell_routes import TMUX_LOG_DIR
 logger = logging.getLogger(__name__)
 
 from routes.cookbook_helpers import (
-    _SSH_PORT_RE, _REMOTE_HOST_RE, _SESSION_ID_RE,
-    _validate_repo_id, _validate_serve_model_id, _validate_include, _validate_remote_host, _validate_token,
-    _validate_local_dir, _validate_ssh_port, _validate_gpus, _shell_path,
+    _SESSION_ID_RE, _validate_repo_id, _validate_serve_model_id, _validate_include, _validate_token,
+    _validate_local_dir, _validate_gpus, _shell_path,
     _ps_squote, _bash_squote, _validate_serve_cmd, _parse_serve_phase,
     _safe_env_prefix, _local_tooling_path_export, _append_serve_preflight_exit_lines,
     _append_serve_exit_code_lines, _append_llama_cpp_linux_accel_build_lines, _cached_model_scan_script,
@@ -45,16 +46,16 @@ from routes.cookbook_helpers import (
 
 _HF_TOKEN_STATUS_SNIPPET = (
     'if [ -n "$HF_TOKEN" ]; then '
-    'echo "[odysseus] HF token: applied"; '
+    'echo "[lodestar] HF token: applied"; '
     'else '
-    'echo "[odysseus] HF token: NOT SET — gated/private models will be denied. '
-    'Add one in Odysseus Settings -> Cookbook -> HuggingFace Token."; '
+    'echo "[lodestar] HF token: NOT SET — gated/private models will be denied. '
+    'Add one in Lodestar Settings -> Cookbook -> HuggingFace Token."; '
     'fi'
 )
 
 def setup_cookbook_routes() -> APIRouter:
     router = APIRouter(tags=["cookbook"])
-    _cookbook_state_path = Path(os.environ.get("DATA_DIR", "data")) / "cookbook_state.json"
+    _cookbook_state_path = Path(COOKBOOK_STATE_FILE)
 
     def _mask_secret(value: str) -> str:
         if not value:
@@ -283,7 +284,7 @@ def setup_cookbook_routes() -> APIRouter:
             # which_tool so the .exe is found even when PATHEXT is unusual.
             ssh_keygen = which_tool("ssh-keygen") or "ssh-keygen"
             proc = await asyncio.create_subprocess_exec(
-                ssh_keygen, "-t", "ed25519", "-N", "", "-C", "odysseus-cookbook", "-f", str(key_path),
+                ssh_keygen, "-t", "ed25519", "-N", "", "-C", "lodestar-cookbook", "-f", str(key_path),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -406,8 +407,8 @@ def setup_cookbook_routes() -> APIRouter:
         else:
             _validate_repo_id(req.repo_id)
             _validate_include(req.include)
-        _validate_remote_host(req.remote_host)
-        req.ssh_port = _validate_ssh_port(req.ssh_port)
+        validate_remote_host(req.remote_host)
+        req.ssh_port = validate_ssh_port(req.ssh_port)
         req.local_dir = _validate_local_dir(req.local_dir)
         req.hf_token = "" if is_ollama_download else (req.hf_token or _load_stored_hf_token())
         _validate_token(req.hf_token)
@@ -448,7 +449,7 @@ def setup_cookbook_routes() -> APIRouter:
             lines.append(f"export HF_HUB_CACHE={_dl_hf_home_shell}/hub")
         # Ensure pip-user scripts (e.g. hf CLI installed via --user) are on PATH
         lines.append('export PATH="$HOME/.local/bin:$HOME/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"')
-        # When Odysseus runs from a venv (e.g. native macOS install), put its bin
+        # When Lodestar runs from a venv (e.g. native macOS install), put its bin
         # on PATH so the tmux shell finds the bundled `hf`/`python3` without an
         # activated venv. Local bash runs only — meaningless over SSH.
         if not req.remote_host:
@@ -460,14 +461,14 @@ def setup_cookbook_routes() -> APIRouter:
         # Use `python3 -m pip` not `pip` — macOS has no bare `pip` command.
         if is_ollama_download:
             lines.append('if command -v ollama >/dev/null 2>&1; then')
-            lines.append(f'  ODYSSEUS_OLLAMA_PULL_CMD={shlex.quote(ollama_cmd)}')
+            lines.append(f'  LODESTAR_OLLAMA_PULL_CMD={shlex.quote(ollama_cmd)}')
             lines.append('elif command -v docker >/dev/null 2>&1; then')
-            lines.append('  ODYSSEUS_OLLAMA_CONTAINER="$(docker ps --format \'{{.Names}}\' 2>/dev/null | grep -E \'^(ollama-rocm|ollama-test)$\' | head -1)"')
-            lines.append('  if [ -n "$ODYSSEUS_OLLAMA_CONTAINER" ]; then')
-            lines.append(f'    ODYSSEUS_OLLAMA_PULL_CMD={shlex.quote("docker exec ${ODYSSEUS_OLLAMA_CONTAINER} " + ollama_cmd)}')
+            lines.append('  LODESTAR_OLLAMA_CONTAINER="$(docker ps --format \'{{.Names}}\' 2>/dev/null | grep -E \'^(ollama-rocm|ollama-test)$\' | head -1)"')
+            lines.append('  if [ -n "$LODESTAR_OLLAMA_CONTAINER" ]; then')
+            lines.append(f'    LODESTAR_OLLAMA_PULL_CMD={shlex.quote("docker exec ${LODESTAR_OLLAMA_CONTAINER} " + ollama_cmd)}')
             lines.append('  fi')
             lines.append('fi')
-            lines.append('if [ -z "$ODYSSEUS_OLLAMA_PULL_CMD" ]; then echo "ERROR: Ollama not found on this server. Install Ollama or start an ollama-rocm/ollama-test container."; exit 127; fi')
+            lines.append('if [ -z "$LODESTAR_OLLAMA_PULL_CMD" ]; then echo "ERROR: Ollama not found on this server. Install Ollama or start an ollama-rocm/ollama-test container."; exit 127; fi')
         else:
             lines.append(f"command -v hf >/dev/null 2>&1 || {_pip_install_fallback_chain('huggingface_hub', upgrade=True)}")
             if req.disable_hf_transfer:
@@ -496,7 +497,7 @@ def setup_cookbook_routes() -> APIRouter:
             # ── Windows remote: generate .ps1 runner, use Start-Process for background ──
             remote_runner = f".{session_id}_run.ps1"
             ps_lines = []
-            ps_lines.append('$sessionDir = "$env:TEMP\\odysseus-sessions"')
+            ps_lines.append('$sessionDir = "$env:TEMP\\lodestar-sessions"')
             ps_lines.append('New-Item -ItemType Directory -Force -Path $sessionDir | Out-Null')
             if req.hf_token:
                 ps_lines.append(f"$env:HF_TOKEN = '{_ps_squote(req.hf_token)}'")
@@ -550,7 +551,7 @@ def setup_cookbook_routes() -> APIRouter:
             _pf = f"-p {_port} " if _port and _port != "22" else ""
             # Start-Process creates a fully detached process that survives SSH disconnect
             launch_ps = (
-                "$sd = \\\"$env:TEMP\\odysseus-sessions\\\"; "
+                "$sd = \\\"$env:TEMP\\lodestar-sessions\\\"; "
                 f"Start-Process powershell -ArgumentList '-ExecutionPolicy','Bypass','-File','$HOME\\{remote_runner}' "
                 f"-RedirectStandardOutput \\\"$sd\\{session_id}.log\\\" "
                 f"-RedirectStandardError \\\"$sd\\{session_id}.err.log\\\" "
@@ -591,14 +592,14 @@ def setup_cookbook_routes() -> APIRouter:
             # Use --break-system-packages on PEP-668 systems (Arch, newer Debian) so it doesn't bail.
             if is_ollama_download:
                 runner_lines.append('if command -v ollama >/dev/null 2>&1; then')
-                runner_lines.append(f'  ODYSSEUS_OLLAMA_PULL_CMD={shlex.quote(ollama_cmd)}')
+                runner_lines.append(f'  LODESTAR_OLLAMA_PULL_CMD={shlex.quote(ollama_cmd)}')
                 runner_lines.append('elif command -v docker >/dev/null 2>&1; then')
-                runner_lines.append('  ODYSSEUS_OLLAMA_CONTAINER="$(docker ps --format \'{{.Names}}\' 2>/dev/null | grep -E \'^(ollama-rocm|ollama-test)$\' | head -1)"')
-                runner_lines.append('  if [ -n "$ODYSSEUS_OLLAMA_CONTAINER" ]; then')
-                runner_lines.append(f'    ODYSSEUS_OLLAMA_PULL_CMD={shlex.quote("docker exec ${ODYSSEUS_OLLAMA_CONTAINER} " + ollama_cmd)}')
+                runner_lines.append('  LODESTAR_OLLAMA_CONTAINER="$(docker ps --format \'{{.Names}}\' 2>/dev/null | grep -E \'^(ollama-rocm|ollama-test)$\' | head -1)"')
+                runner_lines.append('  if [ -n "$LODESTAR_OLLAMA_CONTAINER" ]; then')
+                runner_lines.append(f'    LODESTAR_OLLAMA_PULL_CMD={shlex.quote("docker exec ${LODESTAR_OLLAMA_CONTAINER} " + ollama_cmd)}')
                 runner_lines.append('  fi')
                 runner_lines.append('fi')
-                runner_lines.append('if [ -z "$ODYSSEUS_OLLAMA_PULL_CMD" ]; then echo "ERROR: Ollama not found on this server. Install Ollama or start an ollama-rocm/ollama-test container."; exit 127; fi')
+                runner_lines.append('if [ -z "$LODESTAR_OLLAMA_PULL_CMD" ]; then echo "ERROR: Ollama not found on this server. Install Ollama or start an ollama-rocm/ollama-test container."; exit 127; fi')
             else:
                 runner_lines.append(f"command -v hf >/dev/null 2>&1 || {_pip_install_fallback_chain('huggingface_hub', python_cmd='pip', upgrade=True)}")
                 if req.disable_hf_transfer:
@@ -619,7 +620,7 @@ def setup_cookbook_routes() -> APIRouter:
             runner_lines.append('while [ $_attempt -lt $_max_retries ]; do')
             runner_lines.append('  _attempt=$((_attempt+1))')
             if is_ollama_download:
-                runner_lines.append('  eval "$ODYSSEUS_OLLAMA_PULL_CMD" < /dev/null')
+                runner_lines.append('  eval "$LODESTAR_OLLAMA_PULL_CMD" < /dev/null')
             else:
                 runner_lines.append('  if command -v hf &>/dev/null; then')
                 runner_lines.append(f'    {hf_cmd} < /dev/null')
@@ -673,7 +674,7 @@ def setup_cookbook_routes() -> APIRouter:
             if not is_ollama_download:
                 lines.append(_HF_TOKEN_STATUS_SNIPPET)
             # Retry loop — same rationale as the remote-bash path. Issue #2722.
-            _hf_invoke = 'eval "$ODYSSEUS_OLLAMA_PULL_CMD" < /dev/null' if is_ollama_download else (hf_cmd if IS_WINDOWS else f"{hf_cmd} < /dev/null")
+            _hf_invoke = 'eval "$LODESTAR_OLLAMA_PULL_CMD" < /dev/null' if is_ollama_download else (hf_cmd if IS_WINDOWS else f"{hf_cmd} < /dev/null")
             lines.append('_max_retries=10; _attempt=0; _ec=0')
             lines.append('while [ $_attempt -lt $_max_retries ]; do')
             lines.append('  _attempt=$((_attempt+1))')
@@ -704,8 +705,8 @@ def setup_cookbook_routes() -> APIRouter:
                 logger.error(f"Local detached download launch failed: {e}")
                 return {"ok": False, "error": str(e), "session_id": session_id}
         else:
-            proc = await asyncio.create_subprocess_shell(
-                setup_cmd,
+            proc = await asyncio.create_subprocess_exec(
+                "/bin/sh", "-c", setup_cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -738,9 +739,8 @@ def setup_cookbook_routes() -> APIRouter:
         # Validate shell-bound inputs, matching the sibling list_gpus endpoint —
         # `host`/`ssh_port` are interpolated into an ssh command below, so an
         # unvalidated value (e.g. "x'; rm -rf ~ #") would be command injection.
-        host = _validate_remote_host(host)
-        if ssh_port is not None and ssh_port != "" and not _SSH_PORT_RE.fullmatch(ssh_port):
-            raise HTTPException(400, "Invalid ssh_port")
+        host = validate_remote_host(host)
+        ssh_port = validate_ssh_port(ssh_port)
         TMUX_LOG_DIR.mkdir(parents=True, exist_ok=True)
 
         model_dirs = []
@@ -761,14 +761,14 @@ def setup_cookbook_routes() -> APIRouter:
                 cmd = f'ssh {_pf}{host} "python -" < \'{scan_py}\''
             else:
                 cmd = f"ssh {_pf}{host} 'python3 -' < '{scan_py}'"
-            proc = await asyncio.create_subprocess_shell(
-                cmd,
+            proc = await asyncio.create_subprocess_exec(
+                "/bin/sh", "-c", cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=str(Path.home()),
             )
         else:
-            # LOCAL scan: use sys.executable (the venv Python Odysseus is already
+            # LOCAL scan: use sys.executable (the venv Python Lodestar is already
             # running under) — it's guaranteed real Python on all platforms.
             # Falling back to which_tool on Windows risks hitting the Microsoft
             # Store stub alias for "python3"/"python", which prints
@@ -889,11 +889,16 @@ def setup_cookbook_routes() -> APIRouter:
             # listening" check without requiring ss/netstat/nmap.
             ssh_base = ["ssh", "-o", "ConnectTimeout=4", "-o", "StrictHostKeyChecking=no"]
             if ssh_port and str(ssh_port) != "22":
-                if not _SSH_PORT_RE.match(str(ssh_port)):
+                try:
+                    ssh_port = validate_ssh_port(ssh_port)
+                except HTTPException:
                     return None
                 ssh_base.extend(["-p", str(ssh_port)])
-            host_arg = remote
-            if not _REMOTE_HOST_RE.match(host_arg):
+            try:
+                host_arg = validate_remote_host(remote)
+            except HTTPException:
+                return None
+            if not host_arg:
                 return None
             probe_ports = " ".join(str(start_port + i) for i in range(max_offset + 1))
             script = (
@@ -1059,7 +1064,7 @@ def setup_cookbook_routes() -> APIRouter:
             port = 8080  # llama.cpp's llama-server default — the Apple Silicon path
 
         # Determine host. The cookbook tmux for `local=true` serves runs INSIDE
-        # the odysseus container — so the right URL for the in-container
+        # the lodestar container — so the right URL for the in-container
         # backend to reach it is `localhost`, NOT `host.docker.internal`
         # (the latter points at the docker HOST, which doesn't have a server
         # on that port). The previous host.docker.internal fallback only made
@@ -1196,8 +1201,8 @@ def setup_cookbook_routes() -> APIRouter:
         """
         require_admin(request)
         # Defence-in-depth: reject values that could break out of shell contexts.
-        _validate_remote_host(req.remote_host)
-        req.ssh_port = _validate_ssh_port(req.ssh_port)
+        validate_remote_host(req.remote_host)
+        req.ssh_port = validate_ssh_port(req.ssh_port)
         req.gpus = _validate_gpus(req.gpus)
         req.hf_token = req.hf_token or _load_stored_hf_token()
         _validate_token(req.hf_token)
@@ -1280,7 +1285,7 @@ def setup_cookbook_routes() -> APIRouter:
             # ── Windows remote: generate .ps1 serve runner ──
             remote_runner = f".{session_id}_run.ps1"
             ps_lines = []
-            ps_lines.append('$sessionDir = "$env:TEMP\\odysseus-sessions"')
+            ps_lines.append('$sessionDir = "$env:TEMP\\lodestar-sessions"')
             ps_lines.append('New-Item -ItemType Directory -Force -Path $sessionDir | Out-Null')
             if req.hf_token:
                 ps_lines.append(f"$env:HF_TOKEN = '{_ps_squote(req.hf_token)}'")
@@ -1317,7 +1322,7 @@ def setup_cookbook_routes() -> APIRouter:
             _Pf = f"-P {_port} " if _port and _port != "22" else ""
             _pf = f"-p {_port} " if _port and _port != "22" else ""
             launch_ps = (
-                "$sd = \\\"$env:TEMP\\odysseus-sessions\\\"; "
+                "$sd = \\\"$env:TEMP\\lodestar-sessions\\\"; "
                 f"Start-Process powershell -ArgumentList '-ExecutionPolicy','Bypass','-File','$HOME\\{remote_runner}' "
                 f"-RedirectStandardOutput \\\"$sd\\{session_id}.log\\\" "
                 f"-RedirectStandardError \\\"$sd\\{session_id}.err.log\\\" "
@@ -1340,14 +1345,14 @@ def setup_cookbook_routes() -> APIRouter:
             # the post-crash interactive shell's neofetch banner ALSO gets
             # teed into the log file and `tail -N` returns ONLY the banner —
             # the actual traceback ends up earlier than the tail window.
-            runner_lines.append("mkdir -p /tmp/odysseus-tmux 2>/dev/null || true")
+            runner_lines.append("mkdir -p /tmp/lodestar-tmux 2>/dev/null || true")
             runner_lines.append("exec 3>&1 4>&2")
             runner_lines.append(
-                f"exec > >(tee -a /tmp/odysseus-tmux/{session_id}.log) 2>&1"
+                f"exec > >(tee -a /tmp/lodestar-tmux/{session_id}.log) 2>&1"
             )
             runner_lines.extend(_user_shell_path_bootstrap())
-            runner_lines.append('ODYSSEUS_PREFLIGHT_EXIT=""')
-            # Put Odysseus's own venv bin on PATH (local runs only) so the serve
+            runner_lines.append('LODESTAR_PREFLIGHT_EXIT=""')
+            # Put Lodestar's own venv bin on PATH (local runs only) so the serve
             # shell resolves the bundled python3/hf, mirroring the download flow.
             if not remote:
                 runner_lines.append(_local_tooling_path_export(sys.executable))
@@ -1411,7 +1416,7 @@ def setup_cookbook_routes() -> APIRouter:
                 runner_lines.append('  fi')
                 runner_lines.append('  if ! command -v llama-server &>/dev/null && ! python3 -c "import llama_cpp" 2>/dev/null; then')
                 runner_lines.append('    echo "ERROR: llama.cpp serving is not available after install/build attempts."')
-                runner_lines.append('    ODYSSEUS_PREFLIGHT_EXIT=127')
+                runner_lines.append('    LODESTAR_PREFLIGHT_EXIT=127')
                 runner_lines.append('  fi')
                 runner_lines.append('fi')
             elif re.search(r"\bollama\s+serve\b", req.cmd):
@@ -1426,13 +1431,13 @@ def setup_cookbook_routes() -> APIRouter:
                 # ollama on 11434), scan upward for a free one rather than
                 # silently reattaching to an external service that Stop
                 # can't reach.
-                runner_lines.append(f'ODYSSEUS_OLLAMA_HOST={_bash_squote(_ollama_host)}')
-                runner_lines.append(f'ODYSSEUS_OLLAMA_PORT="{_ollama_port}"')
-                runner_lines.append('for _ody_off in 0 1 2 3 4 5 6 7 8 9; do')
-                runner_lines.append('  _ody_try_port=$((ODYSSEUS_OLLAMA_PORT + _ody_off))')
-                runner_lines.append('  if ! (exec 3<>/dev/tcp/127.0.0.1/$_ody_try_port) 2>/dev/null; then')
+                runner_lines.append(f'LODESTAR_OLLAMA_HOST={_bash_squote(_ollama_host)}')
+                runner_lines.append(f'LODESTAR_OLLAMA_PORT="{_ollama_port}"')
+                runner_lines.append('for _los_off in 0 1 2 3 4 5 6 7 8 9; do')
+                runner_lines.append('  _los_try_port=$((LODESTAR_OLLAMA_PORT + _los_off))')
+                runner_lines.append('  if ! (exec 3<>/dev/tcp/127.0.0.1/$_los_try_port) 2>/dev/null; then')
                 runner_lines.append('    exec 3<&-; exec 3>&-')
-                runner_lines.append('    ODYSSEUS_OLLAMA_PORT="$_ody_try_port"')
+                runner_lines.append('    LODESTAR_OLLAMA_PORT="$_los_try_port"')
                 runner_lines.append('    break')
                 runner_lines.append('  fi')
                 runner_lines.append('  exec 3<&-; exec 3>&-')
@@ -1443,21 +1448,21 @@ def setup_cookbook_routes() -> APIRouter:
                 runner_lines.append('  echo "=== Process exited with code 127 ==="')
                 runner_lines.append('  exec bash -i')
                 runner_lines.append('fi')
-                runner_lines.append('ODYSSEUS_OLLAMA_URL="http://${ODYSSEUS_OLLAMA_HOST}:${ODYSSEUS_OLLAMA_PORT}"')
+                runner_lines.append('LODESTAR_OLLAMA_URL="http://${LODESTAR_OLLAMA_HOST}:${LODESTAR_OLLAMA_PORT}"')
                 if remote and _ollama_host in ("0.0.0.0", "::"):
-                    runner_lines.append('echo "[odysseus] WARNING: remote Ollama will bind to ${ODYSSEUS_OLLAMA_HOST}:${ODYSSEUS_OLLAMA_PORT} so Odysseus can reach it from this host."')
-                    runner_lines.append('echo "[odysseus] Ollama has no built-in authentication; expose this only on a trusted LAN/VPN or provide an explicit OLLAMA_HOST with your own access controls."')
-                runner_lines.append('echo "Starting ollama server on ${ODYSSEUS_OLLAMA_HOST}:${ODYSSEUS_OLLAMA_PORT}..."')
-                runner_lines.append('OLLAMA_HOST="${ODYSSEUS_OLLAMA_HOST}:${ODYSSEUS_OLLAMA_PORT}" ollama serve')
-                runner_lines.append('_ody_exit=$?')
+                    runner_lines.append('echo "[lodestar] WARNING: remote Ollama will bind to ${LODESTAR_OLLAMA_HOST}:${LODESTAR_OLLAMA_PORT} so Odysseus can reach it from this host."')
+                    runner_lines.append('echo "[lodestar] Ollama has no built-in authentication; expose this only on a trusted LAN/VPN or provide an explicit OLLAMA_HOST with your own access controls."')
+                runner_lines.append('echo "Starting ollama server on ${LODESTAR_OLLAMA_HOST}:${LODESTAR_OLLAMA_PORT}..."')
+                runner_lines.append('OLLAMA_HOST="${LODESTAR_OLLAMA_HOST}:${LODESTAR_OLLAMA_PORT}" ollama serve')
+                runner_lines.append('_los_exit=$?')
                 runner_lines.append('echo')
-                runner_lines.append('echo "=== Process exited with code ${_ody_exit} ==="')
+                runner_lines.append('echo "=== Process exited with code ${_los_exit} ==="')
                 runner_lines.append('exec bash -i')
             elif "vllm serve" in req.cmd:
                 # vLLM is CUDA/ROCm-only and does not run on macOS at all.
                 runner_lines.append('if [ "$(uname -s)" = "Darwin" ]; then')
                 runner_lines.append('  echo "ERROR: vLLM does not run on macOS. Use Ollama or llama.cpp (Metal) instead."')
-                runner_lines.append('  ODYSSEUS_PREFLIGHT_EXIT=1')
+                runner_lines.append('  LODESTAR_PREFLIGHT_EXIT=1')
                 runner_lines.append('fi')
                 # Put ~/.local/bin on PATH first — without a venv, vllm installs
                 # there via --user and the non-login serve shell otherwise can't
@@ -1465,24 +1470,24 @@ def setup_cookbook_routes() -> APIRouter:
                 runner_lines.append('export PATH="$HOME/.local/bin:$PATH"')
                 runner_lines.append('if ! command -v vllm &>/dev/null; then')
                 runner_lines.append('  echo "ERROR: vLLM is not installed."')
-                runner_lines.append('  ODYSSEUS_PREFLIGHT_EXIT=127')
+                runner_lines.append('  LODESTAR_PREFLIGHT_EXIT=127')
                 runner_lines.append('fi')
             elif "sglang.launch_server" in req.cmd:
                 runner_lines.append('export PATH="$HOME/.local/bin:$PATH"')
                 runner_lines.append('if ! command -v sglang &>/dev/null; then')
                 runner_lines.append('  echo "ERROR: SGLang is not installed."')
-                runner_lines.append('  ODYSSEUS_PREFLIGHT_EXIT=127')
-                runner_lines.append('elif ! ODYSSEUS_SGLANG_IMPORT_ERROR="$(python3 -c "import sglang" 2>&1)"; then')
+                runner_lines.append('  LODESTAR_PREFLIGHT_EXIT=127')
+                runner_lines.append('elif ! LODESTAR_SGLANG_IMPORT_ERROR="$(python3 -c "import sglang" 2>&1)"; then')
                 runner_lines.append('  echo "ERROR: SGLang is installed but failed to import."')
-                runner_lines.append('  printf "%s\\n" "$ODYSSEUS_SGLANG_IMPORT_ERROR"')
-                runner_lines.append('  ODYSSEUS_PREFLIGHT_EXIT=127')
+                runner_lines.append('  printf "%s\\n" "$LODESTAR_SGLANG_IMPORT_ERROR"')
+                runner_lines.append('  LODESTAR_PREFLIGHT_EXIT=127')
                 runner_lines.append('fi')
             elif "scripts/diffusion_server.py" in req.cmd or ".diffusion_server.py" in req.cmd:
                 runner_lines.append('export PATH="$HOME/.local/bin:$PATH"')
-                runner_lines.append('if ! ODYSSEUS_DIFFUSION_IMPORT_ERROR="$(python3 -c "import torch, diffusers" 2>&1)"; then')
+                runner_lines.append('if ! LODESTAR_DIFFUSION_IMPORT_ERROR="$(python3 -c "import torch, diffusers" 2>&1)"; then')
                 runner_lines.append('  echo "ERROR: Diffusion serving requires PyTorch + diffusers."')
-                runner_lines.append('  printf "%s\\n" "$ODYSSEUS_DIFFUSION_IMPORT_ERROR"')
-                runner_lines.append('  ODYSSEUS_PREFLIGHT_EXIT=127')
+                runner_lines.append('  printf "%s\\n" "$LODESTAR_DIFFUSION_IMPORT_ERROR"')
+                runner_lines.append('  LODESTAR_PREFLIGHT_EXIT=127')
                 runner_lines.append('fi')
 
             handled_ollama_sidecar_probe = False
@@ -1494,11 +1499,11 @@ def setup_cookbook_routes() -> APIRouter:
                     keep_shell_open=not local_windows,
                 )
                 runner_lines.append(req.cmd)
-                runner_lines.append('_ody_exit=$?')
+                runner_lines.append('_los_exit=$?')
                 runner_lines.append('echo')
-                runner_lines.append('echo "=== Process exited with code ${_ody_exit} ==="')
-                runner_lines.append('if [ "$_ody_exit" -eq 0 ]; then')
-                runner_lines.append('  echo "[odysseus] Ollama sidecar model is available; keeping Cookbook task attached to the persistent Ollama daemon."')
+                runner_lines.append('echo "=== Process exited with code ${_los_exit} ==="')
+                runner_lines.append('if [ "$_los_exit" -eq 0 ]; then')
+                runner_lines.append('  echo "[lodestar] Ollama sidecar model is available; keeping Cookbook task attached to the persistent Ollama daemon."')
                 runner_lines.append('  while true; do sleep 3600; done')
                 runner_lines.append('fi')
                 runner_lines.append('exec bash -i')
@@ -1568,8 +1573,8 @@ def setup_cookbook_routes() -> APIRouter:
                 logger.error(f"Local detached serve launch failed: {e}")
                 return {"ok": False, "error": str(e), "session_id": session_id}
         else:
-            proc = await asyncio.create_subprocess_shell(
-                setup_cmd,
+            proc = await asyncio.create_subprocess_exec(
+                "/bin/sh", "-c", setup_cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -1637,20 +1642,19 @@ def setup_cookbook_routes() -> APIRouter:
     async def server_setup(request: Request, req: SetupRequest):
         """Install required dependencies on a remote server via SSH."""
         require_admin(request)
-        host = _validate_remote_host(req.host)
+        host = validate_remote_host(req.host)
         if not host:
             raise HTTPException(400, "host is required")
         port = req.ssh_port
-        if port is not None and port != "" and not re.fullmatch(r"\d{1,5}", port):
-            raise HTTPException(400, "Invalid ssh_port")
+        port = validate_ssh_port(port)
         pf = f"-p {port} " if port and port != "22" else ""
 
         # Detect platform: Windows first (echo %OS% → Windows_NT), then Termux, then Linux
         detect_cmd = f'ssh {pf}{host} "echo %OS%"'
         platform = "linux"
         try:
-            proc = await asyncio.create_subprocess_shell(
-                detect_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            proc = await asyncio.create_subprocess_exec(
+                "/bin/sh", "-c", detect_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
             out = stdout.decode().strip()
@@ -1659,8 +1663,8 @@ def setup_cookbook_routes() -> APIRouter:
             else:
                 # Check for Termux
                 detect_cmd2 = f"ssh {pf}{host} 'test -d /data/data/com.termux && echo termux || echo linux'"
-                proc2 = await asyncio.create_subprocess_shell(
-                    detect_cmd2, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                proc2 = await asyncio.create_subprocess_exec(
+                    "/bin/sh", "-c", detect_cmd2, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                 )
                 stdout2, _ = await asyncio.wait_for(proc2.communicate(), timeout=10)
                 platform = stdout2.decode().strip()
@@ -1672,7 +1676,7 @@ def setup_cookbook_routes() -> APIRouter:
             # Also create the session directory for background tasks
             setup_script = (
                 'powershell -Command "'
-                "New-Item -ItemType Directory -Force -Path $env:TEMP\\odysseus-sessions | Out-Null; "
+                "New-Item -ItemType Directory -Force -Path $env:TEMP\\lodestar-sessions | Out-Null; "
                 "try { python --version } catch { Write-Host 'ERROR: Python not found — install from python.org'; exit 1 }; "
                 "python -m pip install -q huggingface-hub 2>$null; "
                 "python -c \\\"from huggingface_hub import snapshot_download; print('OK')\\\""
@@ -1711,8 +1715,8 @@ def setup_cookbook_routes() -> APIRouter:
             cmd = f"ssh {pf}{host} '{setup_script}'"
 
         try:
-            proc = await asyncio.create_subprocess_shell(
-                cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            proc = await asyncio.create_subprocess_exec(
+                "/bin/sh", "-c", cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
             output = stdout.decode() + stderr.decode()
@@ -1730,8 +1734,8 @@ def setup_cookbook_routes() -> APIRouter:
         if host:
             pf = f"-p {ssh_port} " if ssh_port and ssh_port != "22" else ""
             cmd = f"ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no {pf}{host} '{query}'"
-            proc = await asyncio.create_subprocess_shell(
-                cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            proc = await asyncio.create_subprocess_exec(
+                "/bin/sh", "-c", cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
         else:
             proc = await asyncio.create_subprocess_exec(
@@ -1760,12 +1764,12 @@ def setup_cookbook_routes() -> APIRouter:
                 "else echo 'No POSIX shell found for GPU probe' >&2; exit 127; fi"
             )
             cmd = f"ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no {pf}{host} {shlex.quote(remote_cmd)}"
-            proc = await asyncio.create_subprocess_shell(
-                cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            proc = await asyncio.create_subprocess_exec(
+                "/bin/sh", "-c", cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
         else:
-            proc = await asyncio.create_subprocess_shell(
-                cmd_text, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            proc = await asyncio.create_subprocess_exec(
+                "/bin/sh", "-c", cmd_text, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
         try:
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
@@ -1886,9 +1890,8 @@ def setup_cookbook_routes() -> APIRouter:
         `busy` is True when free_mb/total_mb < 0.5.
         """
         require_admin(request)
-        host = _validate_remote_host(host)
-        if ssh_port is not None and ssh_port != "" and not _SSH_PORT_RE.fullmatch(ssh_port):
-            raise HTTPException(400, "Invalid ssh_port")
+        host = validate_remote_host(host)
+        ssh_port = validate_ssh_port(ssh_port)
         gpu_query = "nvidia-smi --query-gpu=index,name,memory.free,memory.total,memory.used,utilization.gpu,uuid --format=csv,noheader,nounits"
         nvidia_error = None
         try:
@@ -2045,16 +2048,15 @@ def setup_cookbook_routes() -> APIRouter:
         sig = (req.signal or "TERM").upper()
         if sig not in ("TERM", "KILL", "INT"):
             raise HTTPException(400, "signal must be TERM, KILL, or INT")
-        host = _validate_remote_host(req.host)
-        if req.ssh_port and not _SSH_PORT_RE.fullmatch(req.ssh_port):
-            raise HTTPException(400, "Invalid ssh_port")
+        host = validate_remote_host(req.host)
+        req.ssh_port = validate_ssh_port(req.ssh_port)
         kill_cmd = f"kill -{sig} {req.pid}"
         try:
             if host:
                 pf = f"-p {req.ssh_port} " if req.ssh_port and req.ssh_port != "22" else ""
                 cmd = f"ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no {pf}{host} '{kill_cmd}'"
-                proc = await asyncio.create_subprocess_shell(
-                    cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                proc = await asyncio.create_subprocess_exec(
+                    "/bin/sh", "-c", cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                 )
             elif IS_WINDOWS:
                 # No `kill` binary / POSIX signals on Windows. taskkill /F /T tears
@@ -2381,14 +2383,19 @@ def setup_cookbook_routes() -> APIRouter:
             host = (srv.get("host") or "").strip()
             if not host:
                 continue  # local-only entry; the /proc scan handles it
-            if not _REMOTE_HOST_RE.match(host):
+            try:
+                host = validate_remote_host(host)
+            except HTTPException:
                 continue
             sport = str(srv.get("port") or "").strip()
             ssh_base = ["ssh", "-o", "ConnectTimeout=4", "-o", "StrictHostKeyChecking=no"]
             if sport and sport != "22":
-                if not _SSH_PORT_RE.match(sport):
+                try:
+                    sport = validate_ssh_port(sport)
+                except HTTPException:
                     continue
-                ssh_base.extend(["-p", sport])
+                if sport != "22":
+                    ssh_base.extend(["-p", sport])
 
             try:
                 ls = subprocess.run(
@@ -2542,7 +2549,7 @@ def setup_cookbook_routes() -> APIRouter:
                 async with _httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
                     resp = await client.get(
                         "https://ollama.com/search?sort=popular",
-                        headers={"User-Agent": "odysseus-cookbook/1.0"},
+                        headers={"User-Agent": "lodestar-cookbook/1.0"},
                     )
                 if resp.status_code == 200:
                     html = resp.text
@@ -2742,15 +2749,21 @@ def setup_cookbook_routes() -> APIRouter:
             if not _SESSION_ID_RE.match(session_id):
                 logger.warning(f"Skipping task with unsafe session_id: {session_id!r}")
                 continue
-            if remote and not _REMOTE_HOST_RE.match(remote):
-                logger.warning(f"Skipping task with unsafe remoteHost: {remote!r}")
-                continue
-            if _tport and not _SSH_PORT_RE.match(str(_tport)):
-                logger.warning(f"Skipping task with unsafe sshPort: {_tport!r}")
-                continue
+            if remote:
+                try:
+                    remote = validate_remote_host(remote)
+                except HTTPException:
+                    logger.warning(f"Skipping task with unsafe remoteHost: {remote!r}")
+                    continue
+            if _tport:
+                try:
+                    _tport = validate_ssh_port(str(_tport))
+                except HTTPException:
+                    logger.warning(f"Skipping task with unsafe sshPort: {_tport!r}")
+                    continue
             if task_platform == "windows" and remote:
                 # Windows: check PID file + Get-Process, read log tail
-                sd = "$env:TEMP\\odysseus-sessions"
+                sd = "$env:TEMP\\lodestar-sessions"
                 ssh_base = ["ssh"]
                 if _tport and _tport != "22":
                     ssh_base.extend(["-p", str(_tport)])
@@ -2775,7 +2788,7 @@ def setup_cookbook_routes() -> APIRouter:
                 # Capture 500 lines (was 50) so a Python traceback survives
                 # the post-crash neofetch banner + bash prompt that otherwise
                 # fills the visible tail. Without this, output_tail ends up
-                # as just "Locale: C / Ubuntu_Odysseus ❯" and the agent
+                # as just "Locale: C / Ubuntu_Lodestar ❯" and the agent
                 # can't diagnose the actual error.
                 capture_cmd = ssh_base + [remote, "tmux", "capture-pane", "-t", session_id, "-p", "-S", "-500"]
             elif IS_WINDOWS:

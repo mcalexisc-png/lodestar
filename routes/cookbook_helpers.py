@@ -11,6 +11,7 @@ import shlex
 from fastapi import HTTPException
 from pydantic import BaseModel
 
+from routes._validators import validate_remote_host, validate_ssh_port
 from core.platform_compat import _ssh_exec_argv
 
 logger = logging.getLogger(__name__)
@@ -30,21 +31,24 @@ _LOCAL_MODEL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _OLLAMA_MODEL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,200}$")
 # Include pattern is a glob: allow typical safe glyphs only.
 _INCLUDE_RE = re.compile(r"^[A-Za-z0-9._\-*?/\[\]]+$")
-# Remote host: either `user@host` or plain `host` (alias is allowed), where host
-# is a safe DNS-like token or a short SSH config alias.
-_REMOTE_HOST_RE = re.compile(r"^(?:[A-Za-z0-9._-]+@)?[A-Za-z0-9._-]+$")
 # HF tokens and API tokens are url-safe base64-like.
 _TOKEN_RE = re.compile(r"^[A-Za-z0-9._~+/=-]+$")
 # Session IDs we mint look like "cookbook-deadbeef" or "serve-deadbeef".
 # Anything beyond plain alphanumerics + dash + underscore could break out
 # of the shell/PowerShell contexts the value lands in.
 _SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
-_SSH_PORT_RE = re.compile(r"^\d{1,5}$")
 _GPU_LIST_RE = re.compile(r"^\d+(?:,\d+)*$")
 # A download target directory. Absolute or ~-relative path; safe path glyphs
-# only (no quotes, shell metacharacters, or spaces) since it lands in a shell
-# command. A leading ~ is expanded to $HOME at command-build time.
-_LOCAL_DIR_RE = re.compile(r"^~?/[A-Za-z0-9._/-]*$|^~$")
+# only (no quotes or shell metacharacters). Spaces are allowed because command
+# builders pass the value through quoted shell/Python contexts. The character
+# class uses ``\w`` — Unicode word characters under Python 3's default str
+# matching — so non-ASCII folder names pass validation too: Cyrillic, accented
+# Latin, CJK, e.g. ``/Volumes/Модели`` or ``D:\AI Models\Модели``. This stays
+# shell-safe: none of ``; & | ` $ '' "" () {}`` newlines etc. are in ``[\w. -]``,
+# so injection vectors remain rejected. A leading ~ is expanded to $HOME at
+# command-build time. (Drive letters stay ASCII: ``[A-Za-z]:``.)
+_LOCAL_DIR_RE = re.compile(r"^~?(?:/[\w. -]*)+$|^~$")
+_WINDOWS_LOCAL_DIR_RE = re.compile(r"^[A-Za-z]:[\\/](?:[\w. -]+(?:[\\/][\w. -]+)*[\\/]?)?$")
 _WINDOWS_DRIVE_PATH_RE = re.compile(r"^[A-Za-z]:[\\/]")
 
 
@@ -78,14 +82,6 @@ def _validate_include(v: str | None) -> str | None:
     return v
 
 
-def _validate_remote_host(v: str | None) -> str | None:
-    if v is None or v == "":
-        return None
-    if not _REMOTE_HOST_RE.match(v):
-        raise HTTPException(400, "Invalid remote_host — must be host or user@host, no SSH option syntax")
-    return v
-
-
 def _validate_token(v: str | None) -> str | None:
     if v is None or v == "":
         return None
@@ -97,21 +93,20 @@ def _validate_token(v: str | None) -> str | None:
 def _validate_local_dir(v: str | None) -> str | None:
     if v is None or v == "":
         return None
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in {"'", '"'}:
+        v = v[1:-1]
     v = v.rstrip("/") or "/"
-    if not _LOCAL_DIR_RE.match(v):
-        raise HTTPException(400, "Invalid local_dir — must be an absolute or ~ path with no spaces or shell metacharacters")
+    if not (_LOCAL_DIR_RE.match(v) or _WINDOWS_LOCAL_DIR_RE.match(v)):
+        raise HTTPException(400, "Invalid local_dir — must be an absolute or ~ path with no shell metacharacters")
+    # Reject path segments that start with '-' (option injection). '-' is in the
+    # allowlist, so a dir like ``/models/-rf`` or ``D:\models\-rf`` could be read
+    # as a CLI flag by hf/etc. — and quoting does NOT stop a value from being
+    # parsed as an option. This is the one residual that command-build-time
+    # quoting can't cover, so the guard lives here, keeping the safety wholly
+    # inside the validator rather than relying on consumers.
+    if any(seg.startswith("-") for seg in re.split(r"[\\/]", v) if seg):
+        raise HTTPException(400, "Invalid local_dir — path segments cannot start with '-'")
     return v
-
-
-def _validate_ssh_port(v: str | None) -> str | None:
-    if v is None or v == "":
-        return None
-    if not _SSH_PORT_RE.fullmatch(str(v)):
-        raise HTTPException(400, "Invalid ssh_port")
-    port = int(v)
-    if port < 1 or port > 65535:
-        raise HTTPException(400, "Invalid ssh_port")
-    return str(port)
 
 
 def _validate_gpus(v: str | None) -> str | None:
@@ -125,7 +120,7 @@ def _validate_gpus(v: str | None) -> str | None:
 def _shell_path(p: str) -> str:
     """Render a validated path for a double-quoted shell context, expanding a
     leading ~ to $HOME (single quotes wouldn't expand it). Safe because
-    _validate_local_dir already restricts the charset."""
+    _validate_local_dir already rejects quotes and shell metacharacters."""
     if p == "~":
         return '"$HOME"'
     if p.startswith("~/"):
@@ -136,7 +131,7 @@ def _shell_path(p: str) -> str:
 def _local_tooling_path_export(executable: str) -> str:
     """Bash line prepending the running interpreter's bin dir to PATH.
 
-    When Odysseus runs from a virtualenv, that bin dir holds the tools the
+    When Lodestar runs from a virtualenv, that bin dir holds the tools the
     cookbook runners shell out to (`hf`, `python`). tmux runners start from a
     fresh login shell with the venv NOT activated, so without this they can't
     find `hf` and downloads fail with "hf: command not found" — notably on
@@ -268,7 +263,7 @@ def _venv_safe_local_pip_install_cmd(cmd: str, *, local: bool, in_venv: bool) ->
 
     Cookbook dependency installs run through the model-serve task path so users
     can watch progress in the same log UI. For local POSIX runs, that task
-    prepends Odysseus' own interpreter directory to PATH. If Odysseus itself is
+    prepends Lodestar' own interpreter directory to PATH. If Lodestar itself is
     running from a venv, `python3` resolves to the venv Python and pip rejects
     `--user` with "User site-packages are not visible in this virtualenv".
 
@@ -335,17 +330,17 @@ def _append_pip_install_runner_lines(runner_lines: list[str], cmd: str) -> None:
     runner_lines.append(f"if {help_check}; then")
     runner_lines.append(f"  {cmd}")
     runner_lines.append("else")
-    runner_lines.append('  echo "[odysseus] pip does not support --break-system-packages; installing without it."')
+    runner_lines.append('  echo "[lodestar] pip does not support --break-system-packages; installing without it."')
     runner_lines.append(f"  {without_break}")
     runner_lines.append("fi")
 
 
 def _user_shell_path_bootstrap() -> list[str]:
     return [
-        'ODYSSEUS_USER_SHELL="${SHELL:-}"',
-        'if [ -n "$ODYSSEUS_USER_SHELL" ] && [ -x "$ODYSSEUS_USER_SHELL" ]; then',
-        '  ODYSSEUS_USER_PATH="$("$ODYSSEUS_USER_SHELL" -ic \'printf "__ODYSSEUS_PATH__%s\\n" "$PATH"\' 2>/dev/null | sed -n \'s/^__ODYSSEUS_PATH__//p\' | tail -n 1 || true)"',
-        '  if [ -n "$ODYSSEUS_USER_PATH" ]; then export PATH="$ODYSSEUS_USER_PATH:$PATH"; fi',
+        'LODESTAR_USER_SHELL="${SHELL:-}"',
+        'if [ -n "$LODESTAR_USER_SHELL" ] && [ -x "$LODESTAR_USER_SHELL" ]; then',
+        '  LODESTAR_USER_PATH="$("$LODESTAR_USER_SHELL" -ic \'printf "__LODESTAR_PATH__%s\\n" "$PATH"\' 2>/dev/null | sed -n \'s/^__LODESTAR_PATH__//p\' | tail -n 1 || true)"',
+        '  if [ -n "$LODESTAR_USER_PATH" ]; then export PATH="$LODESTAR_USER_PATH:$PATH"; fi',
         'fi',
         'command -v python3 >/dev/null 2>&1 || python3() { python "$@"; }',
         'command -v python >/dev/null 2>&1 || python() { python3 "$@"; }',
@@ -386,6 +381,7 @@ def _cached_model_scan_script(model_dirs: list[str] | None = None, add_hf_cache:
         "    for root, dirs, fns in safe_walk(base):",
         "        for fn in sorted(fns):",
         "            if not fn.lower().endswith('.gguf'): continue",
+        "            if fn.startswith('._'): continue  # macOS AppleDouble sidecar, not a real GGUF",
         "            fp = os.path.join(root, fn)",
         "            try: size = os.path.getsize(fp)",
         "            except Exception: size = 0",
@@ -563,7 +559,7 @@ def _ollama_bind_from_cmd(cmd: str | None, *, default_host: str = "127.0.0.1") -
     """Return the Ollama bind host/port requested by a serve command.
 
     Plain local `ollama serve` defaults to loopback. Remote callers can pass a
-    wider default host so the resulting API is reachable by Odysseus.
+    wider default host so the resulting API is reachable by Lodestar.
     """
     if not cmd:
         return default_host, "11434"
@@ -658,8 +654,8 @@ def _validate_serve_cmd(v: str | None) -> str | None:
 
 def _append_serve_preflight_exit_lines(runner_lines: list[str], *, keep_shell_open: bool) -> None:
     """Append serve-runner lines that surface preflight failures before exit."""
-    runner_lines.append('if [ -n "$ODYSSEUS_PREFLIGHT_EXIT" ]; then')
-    runner_lines.append('  echo ""; echo "=== Process exited with code $ODYSSEUS_PREFLIGHT_EXIT ==="')
+    runner_lines.append('if [ -n "$LODESTAR_PREFLIGHT_EXIT" ]; then')
+    runner_lines.append('  echo ""; echo "=== Process exited with code $LODESTAR_PREFLIGHT_EXIT ==="')
     if keep_shell_open:
         # Decouple the post-crash interactive shell from the persistent log
         # file. fds 3/4 were saved BEFORE the tee redirect at the top of
@@ -670,23 +666,23 @@ def _append_serve_preflight_exit_lines(runner_lines: list[str], *, keep_shell_op
         runner_lines.append('  sleep 0.2  # let tee child flush + exit')
         runner_lines.append('  exec "${SHELL:-/bin/bash}"')
     else:
-        runner_lines.append('  exit "$ODYSSEUS_PREFLIGHT_EXIT"')
+        runner_lines.append('  exit "$LODESTAR_PREFLIGHT_EXIT"')
     runner_lines.append('fi')
 
 
 def _append_vllm_linux_preflight_lines(runner_lines: list[str]) -> None:
     """Append Linux vLLM readiness lines that identify the runtime being used."""
-    # Keep the user install bin visible for Odysseus-managed `pip install --user`
+    # Keep the user install bin visible for Lodestar-managed `pip install --user`
     # installs, but then report the actual CLI path so external runtimes are clear.
     runner_lines.append('export PATH="$HOME/.local/bin:$PATH"')
-    runner_lines.append('ODYSSEUS_VLLM_BIN="$(command -v vllm 2>/dev/null || true)"')
-    runner_lines.append('if [ -z "$ODYSSEUS_VLLM_BIN" ]; then')
+    runner_lines.append('LODESTAR_VLLM_BIN="$(command -v vllm 2>/dev/null || true)"')
+    runner_lines.append('if [ -z "$LODESTAR_VLLM_BIN" ]; then')
     runner_lines.append('  echo "ERROR: vLLM is not installed."')
-    runner_lines.append('  ODYSSEUS_PREFLIGHT_EXIT=127')
+    runner_lines.append('  LODESTAR_PREFLIGHT_EXIT=127')
     runner_lines.append('else')
-    runner_lines.append('  echo "[odysseus] vLLM CLI: $ODYSSEUS_VLLM_BIN"')
-    runner_lines.append('  ODYSSEUS_VLLM_VERSION="$("$ODYSSEUS_VLLM_BIN" --version 2>&1 | head -n 1 || true)"')
-    runner_lines.append('  if [ -n "$ODYSSEUS_VLLM_VERSION" ]; then echo "[odysseus] vLLM version: $ODYSSEUS_VLLM_VERSION"; fi')
+    runner_lines.append('  echo "[lodestar] vLLM CLI: $LODESTAR_VLLM_BIN"')
+    runner_lines.append('  LODESTAR_VLLM_VERSION="$("$LODESTAR_VLLM_BIN" --version 2>&1 | head -n 1 || true)"')
+    runner_lines.append('  if [ -n "$LODESTAR_VLLM_VERSION" ]; then echo "[lodestar] vLLM version: $LODESTAR_VLLM_VERSION"; fi')
     runner_lines.append('fi')
 
 def _append_serve_exit_code_lines(
@@ -696,18 +692,18 @@ def _append_serve_exit_code_lines(
     is_pip_install: bool = False,
 ) -> None:
     """Append serve-runner lines that preserve and report the command exit code."""
-    runner_lines.append('ODYSSEUS_CMD_EXIT=$?')
+    runner_lines.append('LODESTAR_CMD_EXIT=$?')
     if is_pip_install:
-        runner_lines.append('if [ $ODYSSEUS_CMD_EXIT -eq 0 ]; then echo ""; echo "DOWNLOAD_OK"; fi')
+        runner_lines.append('if [ $LODESTAR_CMD_EXIT -eq 0 ]; then echo ""; echo "DOWNLOAD_OK"; fi')
     if keep_shell_open:
-        runner_lines.append('echo ""; echo "=== Process exited with code $ODYSSEUS_CMD_EXIT ==="')
+        runner_lines.append('echo ""; echo "=== Process exited with code $LODESTAR_CMD_EXIT ==="')
         # See preflight branch above for the rationale on restoring fds 3/4.
         runner_lines.append('exec 1>&3 2>&4 3>&- 4>&- 2>/dev/null || true')
         runner_lines.append('sleep 0.2  # let tee child flush + exit')
         runner_lines.append('exec "${SHELL:-/bin/bash}"')
     else:
-        runner_lines.append('echo ""; echo "=== Process exited with code $ODYSSEUS_CMD_EXIT ==="')
-        runner_lines.append('exit "$ODYSSEUS_CMD_EXIT"')
+        runner_lines.append('echo ""; echo "=== Process exited with code $LODESTAR_CMD_EXIT ==="')
+        runner_lines.append('exit "$LODESTAR_CMD_EXIT"')
 
 
 def _append_llama_cpp_linux_accel_build_lines(runner_lines: list[str]) -> None:
@@ -732,14 +728,14 @@ def _append_llama_cpp_linux_accel_build_lines(runner_lines: list[str]) -> None:
     runner_lines.append('        export HIPCXX="${HIPCXX:-$(hipconfig -l)/clang}"')
     runner_lines.append('        export HIP_PATH="${HIP_PATH:-$(hipconfig -R)}"')
     runner_lines.append('      fi')
-    runner_lines.append('      echo "[odysseus] ROCm/HIP detected — building llama-server with HIP support..."')
+    runner_lines.append('      echo "[lodestar] ROCm/HIP detected — building llama-server with HIP support..."')
     runner_lines.append('      cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_HIP=ON && cmake --build build -j"$NPROC" --target llama-server && ln -sf ~/llama.cpp/build/bin/llama-server ~/bin/llama-server')
     runner_lines.append('    elif command -v nvcc &>/dev/null; then')
     # nvcc alone is not sufficient — pip-installed CUDA wheels or incomplete
     # tooling can expose nvcc without shipping libcudart, causing cmake to fail
     # mid-build with "CUDA runtime library not found". Check cudart explicitly
     # via a small helper so the guard stays readable.
-    runner_lines.append('      _odysseus_has_cudart() {')
+    runner_lines.append('      _lodestar_has_cudart() {')
     runner_lines.append('        ldconfig -p 2>/dev/null | grep -q \'libcudart\\.so\' && return 0')
     runner_lines.append('        local _cuh="${CUDA_HOME:-/usr/local/cuda}"')
     runner_lines.append('        ls "$_cuh/lib64/libcudart.so"* &>/dev/null && return 0')
@@ -749,19 +745,19 @@ def _append_llama_cpp_linux_accel_build_lines(runner_lines: list[str]) -> None:
     runner_lines.append('        ls "${_cuh%/cuda_nvcc}/cuda_runtime/lib/libcudart.so"* &>/dev/null && return 0')
     runner_lines.append('        return 1')
     runner_lines.append('      }')
-    runner_lines.append('      if _odysseus_has_cudart; then')
-    runner_lines.append('        echo "[odysseus] CUDA nvcc + cudart found — building llama-server with CUDA (GPU) support..."')
+    runner_lines.append('      if _lodestar_has_cudart; then')
+    runner_lines.append('        echo "[lodestar] CUDA nvcc + cudart found — building llama-server with CUDA (GPU) support..."')
     runner_lines.append('        cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON && cmake --build build -j"$NPROC" --target llama-server && ln -sf ~/llama.cpp/build/bin/llama-server ~/bin/llama-server')
     runner_lines.append('      else')
-    runner_lines.append('        echo "[odysseus] WARNING: nvcc found but CUDA runtime (libcudart.so) is not visible — building llama-server for CPU only."')
-    runner_lines.append('        echo "[odysseus]   GPU inference will not be available for this llama.cpp build."')
-    runner_lines.append('        echo "[odysseus]   Ensure libcudart is installed (e.g. cuda-runtime package) and visible via ldconfig or CUDA_HOME."')
+    runner_lines.append('        echo "[lodestar] WARNING: nvcc found but CUDA runtime (libcudart.so) is not visible — building llama-server for CPU only."')
+    runner_lines.append('        echo "[lodestar]   GPU inference will not be available for this llama.cpp build."')
+    runner_lines.append('        echo "[lodestar]   Ensure libcudart is installed (e.g. cuda-runtime package) and visible via ldconfig or CUDA_HOME."')
     runner_lines.append('        cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j"$NPROC" --target llama-server && ln -sf ~/llama.cpp/build/bin/llama-server ~/bin/llama-server')
     runner_lines.append('      fi')
     runner_lines.append('    else')
-    runner_lines.append('      echo "[odysseus] WARNING: no HIP/CUDA toolchain found — building llama-server for CPU only."')
-    runner_lines.append('      echo "[odysseus]   GPU inference will not be available for this llama.cpp build."')
-    runner_lines.append('      echo "[odysseus]   Install ROCm for AMD GPUs or vLLM/CUDA tooling for NVIDIA, then re-launch this serve task."')
+    runner_lines.append('      echo "[lodestar] WARNING: no HIP/CUDA toolchain found — building llama-server for CPU only."')
+    runner_lines.append('      echo "[lodestar]   GPU inference will not be available for this llama.cpp build."')
+    runner_lines.append('      echo "[lodestar]   Install ROCm for AMD GPUs or vLLM/CUDA tooling for NVIDIA, then re-launch this serve task."')
     runner_lines.append('      cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j"$NPROC" --target llama-server && ln -sf ~/llama.cpp/build/bin/llama-server ~/bin/llama-server')
     runner_lines.append('    fi')
 
@@ -780,7 +776,7 @@ def _llama_cpp_rebuild_cmd() -> str:
         'mkdir -p "$HOME/bin" && '
         'rm -f "$HOME/bin/llama-server" && '
         'rm -rf "$HOME/llama.cpp/build" && '
-        'echo "[odysseus] Cleared the cached llama.cpp build. '
+        'echo "[lodestar] Cleared the cached llama.cpp build. '
         'Re-launch the serve task to rebuild llama-server from source '
         '(CUDA or HIP will be used if a toolchain is now available)."'
     )
@@ -934,7 +930,7 @@ def _ssh_ps(host, script_path, port=None):
 
 
 # Windows session dir — stored in user's temp on the remote
-WIN_SESSION_DIR = "$env:TEMP\\\\odysseus-sessions"
+WIN_SESSION_DIR = "$env:TEMP\\\\lodestar-sessions"
 
 
 def _diagnose_serve_output(text: str) -> dict | None:

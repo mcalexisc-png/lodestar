@@ -57,7 +57,7 @@ from routes.email_pollers import _start_poller
 
 logger = logging.getLogger(__name__)
 
-ODYSSEUS_MAIL_ORIGIN = "odysseus-ui"
+LODESTAR_MAIL_ORIGIN = "lodestar-ui"
 
 
 def _email_tag_owner_aliases(account_id: str | None, owner: str = "") -> list[str]:
@@ -249,6 +249,41 @@ def _uid_from_fetch_meta(meta_b: bytes) -> str:
     return m.group(1).decode() if m else ""
 
 
+_FETCH_SEQ_RE = re.compile(rb"^(\d+)\s+\(")
+
+
+def _group_uid_fetch_records(msg_data) -> list:
+    """Group an imaplib UID FETCH response into per-message (meta, payload).
+
+    imaplib yields an interleaved list: ``(meta, literal)`` tuples for
+    attributes that carry a literal (``RFC822.HEADER {n}`` etc.) plus bare
+    ``bytes`` elements for everything the server sends outside a literal.
+    Where each attribute lands is server-specific: Dovecot sends FLAGS
+    *before* the header literal (so it ends up inside the tuple meta), while
+    Gmail sends FLAGS *after* it, arriving as a bare ``b' FLAGS (\\Seen))'``
+    element. Dropping bare elements therefore silently loses FLAGS on Gmail
+    and every message renders as unread/unflagged.
+
+    A tuple whose meta starts with a sequence number opens a new record;
+    every other part — continuation tuple or bare bytes — is folded into the
+    current record's meta so attribute regexes see the full meta text.
+    Plain ``b')'`` terminators get folded in too, which is harmless.
+    """
+    grouped: list = []  # list of (meta_bytes, payload_bytes_or_None)
+    for part in (msg_data or []):
+        if isinstance(part, tuple):
+            meta_b = part[0] if isinstance(part[0], (bytes, bytearray)) else str(part[0]).encode()
+            if _FETCH_SEQ_RE.match(meta_b):
+                grouped.append((meta_b, part[1]))
+            elif grouped:
+                cur_meta, cur_payload = grouped[-1]
+                grouped[-1] = (cur_meta + b" " + meta_b, cur_payload or part[1])
+        elif isinstance(part, (bytes, bytearray)) and grouped:
+            cur_meta, cur_payload = grouped[-1]
+            grouped[-1] = (cur_meta + b" " + bytes(part), cur_payload)
+    return grouped
+
+
 def _smtp_ready(cfg: dict) -> bool:
     return bool(cfg.get("smtp_host") and cfg.get("smtp_user") and cfg.get("smtp_password"))
 
@@ -317,12 +352,14 @@ def _move_email_message(conn, uid: str, dest: str, role: str = "") -> bool:
     return False
 
 
-def _apply_odysseus_headers(msg, kind: str | None = None, ref_id: str | None = None):
-    msg["X-Odysseus-Origin"] = ODYSSEUS_MAIL_ORIGIN
+# TODO(lodestar): `odysseus_kind`/`odysseus_ref` are also a `scheduled_emails`
+# DB column/param names; rename together in a schema migration, not here.
+def _apply_lodestar_headers(msg, kind: str | None = None, ref_id: str | None = None):
+    msg["X-Lodestar-Origin"] = LODESTAR_MAIL_ORIGIN
     if kind:
-        msg["X-Odysseus-Kind"] = re.sub(r"[^A-Za-z0-9_.-]", "-", kind)[:64]
+        msg["X-Lodestar-Kind"] = re.sub(r"[^A-Za-z0-9_.-]", "-", kind)[:64]
     if ref_id:
-        msg["X-Odysseus-Ref"] = re.sub(r"[^A-Za-z0-9_.:-]", "-", ref_id)[:128]
+        msg["X-Lodestar-Ref"] = re.sub(r"[^A-Za-z0-9_.:-]", "-", ref_id)[:128]
 
 
 def _envelope_recipients(*fields: str) -> list:
@@ -642,12 +679,14 @@ def setup_email_routes():
                 # All emails NOT marked as answered/done (read or unread).
                 status, data = _imap_uid_search(conn, f"(UNANSWERED{from_clause})")
             elif filter_ == "reminders":
-                # Prefer the Odysseus marker header, but include the subject
-                # fallback too. The fallback uses a distinct Odysseus prefix
-                # so ordinary emails containing "Reminder" don't get mixed in.
+                # Prefer the Lodestar marker header, but include the subject
+                # fallback too (also matches reminders sent by older
+                # Lodestar instances, which used the same prefix style).
+                # The fallback uses a distinct prefix so ordinary emails
+                # containing "Reminder" don't get mixed in.
                 status, data = _imap_uid_search(
                     conn,
-                    f'(OR HEADER X-Odysseus-Kind "reminder" SUBJECT "Reminder (Odysseus):"{from_clause})',
+                    f'(OR HEADER X-Lodestar-Kind "reminder" OR SUBJECT "Reminder (Lodestar):" SUBJECT "Reminder (Lodestar):"{from_clause})',
                 )
             elif filter_ == "pending_30d":
                 # "What's pending in the last month" — UNANSWERED + delivered
@@ -799,20 +838,11 @@ def setup_email_routes():
                 except Exception as e:
                     logger.warning(f"Batch fetch failed, falling back to per-UID: {e}")
                     status, msg_data = "NO", []
-                # imaplib batch responses interleave (meta, payload) tuples and
-                # `b')'` terminators. Group by message: each tuple where the
-                # meta begins with a seq number starts a new message record.
-                seq_re = re.compile(rb'^(\d+)\s+\(')
-                grouped = []  # list of (meta_str, payload_bytes)
-                for part in (msg_data or []):
-                    if isinstance(part, tuple):
-                        meta_b = part[0] if isinstance(part[0], (bytes, bytearray)) else str(part[0]).encode()
-                        if seq_re.match(meta_b):
-                            grouped.append((meta_b, part[1]))
-                        elif grouped:
-                            # continuation of previous message — concatenate meta info if any
-                            cur_meta, cur_payload = grouped[-1]
-                            grouped[-1] = (cur_meta + b" " + meta_b, cur_payload or part[1])
+                # Group the batched response into per-message (meta, payload)
+                # records. Bare bytes parts must be kept: Gmail returns FLAGS
+                # after the header literal as a bare element, and dropping it
+                # rendered every Gmail message as unread/unflagged.
+                grouped = _group_uid_fetch_records(msg_data)
 
                 if status != "OK" and not grouped:
                     conn.logout()
@@ -1098,14 +1128,15 @@ def setup_email_routes():
                             continue
                         raw_header = None
                         flags = ""
-                        for part in msg_data:
-                            if isinstance(part, tuple):
-                                meta = part[0].decode() if isinstance(part[0], bytes) else str(part[0])
-                                if b"RFC822.HEADER" in part[0] if isinstance(part[0], bytes) else "RFC822.HEADER" in meta:
-                                    raw_header = part[1]
-                                flag_match = re.search(r'FLAGS \(([^)]*)\)', meta)
-                                if flag_match:
-                                    flags = flag_match.group(1)
+                        # Same Gmail caveat as the list route: FLAGS may
+                        # arrive after the header literal, so group bare
+                        # parts back into the message meta before scanning.
+                        for meta_b, payload in _group_uid_fetch_records(msg_data):
+                            if payload and b"RFC822.HEADER" in meta_b:
+                                raw_header = payload
+                            flag_match = re.search(rb'FLAGS \(([^)]*)\)', meta_b)
+                            if flag_match:
+                                flags = flag_match.group(1).decode(errors="replace")
                         if not raw_header:
                             continue
                         msg = email_mod.message_from_bytes(raw_header)
@@ -1247,8 +1278,9 @@ def setup_email_routes():
                 try:
                     if sender_addr:
                         _rs = _c.execute(
-                            "SELECT signature_text FROM sender_signatures WHERE from_address = ?",
-                            (sender_addr.lower().strip(),),
+                            f"SELECT signature_text FROM sender_signatures "
+                            f"WHERE from_address = ? AND {owner_clause}",
+                            (sender_addr.lower().strip(), *owner_params),
                         ).fetchone()
                         if _rs and _rs[0]:
                             cached_sender_sig = _rs[0]
@@ -1750,13 +1782,13 @@ def setup_email_routes():
             logger.error(f"Failed to permanently delete email {uid}: {e}")
             return {"success": False, "error": "Mail operation failed"}
 
-    @router.delete("/odysseus/reminders")
-    async def delete_odysseus_reminder_emails(
+    @router.delete("/lodestar/reminders")
+    async def delete_lodestar_reminder_emails(
         account_id: str | None = Query(None),
         permanent: bool = Query(False),
         owner: str = Depends(require_owner),
     ):
-        """Delete email messages stamped as Odysseus reminders."""
+        """Delete email messages stamped as Lodestar reminders."""
         if account_id:
             _assert_owns_account(account_id, owner)
         deleted = 0
@@ -1794,12 +1826,14 @@ def setup_email_routes():
                         # Match the Reminders filter: new messages have the
                         # explicit kind header, and subject fallback catches
                         # clients/providers that stripped custom headers.
-                        uids.update(_search_uids(conn, f'(HEADER X-Odysseus-Kind {_search_quote("reminder")})'))
-                        uids.update(_search_uids(conn, f'(SUBJECT {_search_quote("Reminder (Odysseus):")})'))
+                        uids.update(_search_uids(conn, f'(HEADER X-Lodestar-Kind {_search_quote("reminder")})'))
+                        uids.update(_search_uids(conn, f'(SUBJECT {_search_quote("Reminder (Lodestar):")})'))
+                        uids.update(_search_uids(conn, f'(SUBJECT {_search_quote("Reminder (Lodestar):")})'))
                         for addr in own_addrs:
                             addr_q = _search_quote(addr)
-                            uids.update(_search_uids(conn, f'(FROM {addr_q} SUBJECT {_search_quote("Reminder (Odysseus):")})'))
-                            # Legacy reminders created before the Odysseus
+                            uids.update(_search_uids(conn, f'(FROM {addr_q} SUBJECT {_search_quote("Reminder (Lodestar):")})'))
+                            uids.update(_search_uids(conn, f'(FROM {addr_q} SUBJECT {_search_quote("Reminder (Lodestar):")})'))
+                            # Legacy reminders created before the Lodestar
                             # prefix still came from this mailbox as
                             # "Reminder: ..."; include them in Clear without
                             # sweeping unrelated external reminder emails.
@@ -1822,7 +1856,7 @@ def setup_email_routes():
             _invalidate_list_cache(account_id)
             return {"success": True, "deleted": deleted, "folders_checked": folders_checked}
         except Exception as e:
-            logger.error(f"delete_odysseus_reminder_emails failed: {e}")
+            logger.error(f"delete_lodestar_reminder_emails failed: {e}")
             return {"success": False, "error": "Mail operation failed"}
 
     @router.post("/move/{uid}")
@@ -1946,7 +1980,7 @@ def setup_email_routes():
             outer["Cc"] = cc
         outer["Subject"] = subject or ""
         outer["Date"] = datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000")
-        _apply_odysseus_headers(outer, odysseus_kind or "scheduled", odysseus_ref)
+        _apply_lodestar_headers(outer, odysseus_kind or "scheduled", odysseus_ref)
         if in_reply_to:
             outer["In-Reply-To"] = in_reply_to
         if references:
@@ -2156,7 +2190,7 @@ def setup_email_routes():
         if req.references:
             outer["References"] = req.references
         if req.odysseus_kind:
-            _apply_odysseus_headers(outer, req.odysseus_kind)
+            _apply_lodestar_headers(outer, req.odysseus_kind)
 
         # Plain + HTML body. Escape user content so a `<script>` or
         # `<img onerror=...>` paste in compose doesn't end up as live HTML

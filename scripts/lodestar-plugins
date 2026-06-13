@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""lodestar-plugins — manage in-process (Tier 2) Lodestar plugins.
+
+In-process plugins are small, trusted, pure-Python tools discovered via
+`importlib.metadata` entry points (group `lodestar.tools`) or the bundled
+`plugins/` directory. Each ships a four-field manifest (name, when_to_use,
+how, tags), declares capabilities (net/fs/shell), and lazy-imports on first
+use. Anything heavy/third-party/untrusted should be an MCP server instead.
+
+    lodestar-plugins list                 # all discovered plugins + enabled state
+    lodestar-plugins info <name>          # full manifest for one plugin
+    lodestar-plugins enable <name>        # enable a plugin (persisted)
+    lodestar-plugins disable <name>       # disable a plugin (persisted)
+    lodestar-plugins install <src>        # install a third-party plugin (pip)
+
+Enable/disable state is persisted in data/plugins.json.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "_lib"))
+from cli import quiet_logs, emit, fail, common_parser, run  # noqa: E402
+
+quiet_logs()
+
+try:
+    from src.plugins import get_plugin_loader
+except ModuleNotFoundError as e:  # pragma: no cover
+    sys.stderr.write(f"error: {e}\nhint: run from repo root with venv active.\n")
+    sys.exit(2)
+
+
+def cmd_list(args):
+    emit(get_plugin_loader().list_plugins(), args)
+
+
+def cmd_info(args):
+    manifest = get_plugin_loader().get_manifest(args.name)
+    if manifest is None:
+        fail(f"unknown plugin: {args.name}", code=2)
+        return
+    data = manifest.to_public_dict()
+    data["enabled"] = get_plugin_loader().is_enabled(args.name)
+    emit(data, args)
+
+
+def cmd_enable(args):
+    try:
+        get_plugin_loader().set_enabled(args.name, True)
+    except Exception as e:
+        fail(str(e), code=2)
+        return
+    emit({"name": args.name, "enabled": True}, args)
+
+
+def cmd_disable(args):
+    try:
+        get_plugin_loader().set_enabled(args.name, False)
+    except Exception as e:
+        fail(str(e), code=2)
+        return
+    emit({"name": args.name, "enabled": False}, args)
+
+
+def cmd_install(args):
+    """Install a third-party plugin via pip into the active environment.
+
+    The plugin must declare a `lodestar.tools` entry point. After install,
+    restart Lodestar (or re-run discovery) to pick it up.
+    """
+    import subprocess
+
+    cmd = [sys.executable, "-m", "pip", "install", args.src]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    except Exception as e:
+        fail(f"pip install failed to start: {e}")
+        return
+    if proc.returncode != 0:
+        fail(f"pip install failed:\n{proc.stderr.strip()}")
+        return
+    # Re-discover so the new plugin shows up immediately for `list`.
+    get_plugin_loader().discover(force=True)
+    emit(
+        {
+            "installed": args.src,
+            "note": "Restart Lodestar to load the new plugin into a running server.",
+            "plugins": [p["name"] for p in get_plugin_loader().list_plugins()],
+        },
+        args,
+    )
+
+
+def _build_parser():
+    p = common_parser("lodestar-plugins", "Manage in-process Lodestar plugins.")
+    common = p._common_parents
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("list", parents=common, help="list discovered plugins").set_defaults(func=cmd_list)
+
+    pi = sub.add_parser("info", parents=common, help="show one plugin's manifest")
+    pi.add_argument("name")
+    pi.set_defaults(func=cmd_info)
+
+    pe = sub.add_parser("enable", parents=common, help="enable a plugin")
+    pe.add_argument("name")
+    pe.set_defaults(func=cmd_enable)
+
+    pd = sub.add_parser("disable", parents=common, help="disable a plugin")
+    pd.add_argument("name")
+    pd.set_defaults(func=cmd_disable)
+
+    pin = sub.add_parser("install", parents=common, help="pip-install a third-party plugin")
+    pin.add_argument("src", help="pip requirement / path / VCS URL")
+    pin.set_defaults(func=cmd_install)
+
+    return p
+
+
+if __name__ == "__main__":
+    sys.exit(run(_build_parser()))

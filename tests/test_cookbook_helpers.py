@@ -22,10 +22,11 @@ from routes.cookbook_helpers import (
     _user_shell_path_bootstrap,
     _venv_safe_local_pip_install_cmd,
     _validate_gpus,
+    _validate_local_dir,
     _validate_repo_id,
     _validate_serve_cmd,
     _validate_serve_model_id,
-    _validate_ssh_port,
+    _shell_path,
     run_ssh_command_async,
 )
 
@@ -104,10 +105,87 @@ def test_safe_env_prefix_accepts_powershell_activation_path():
     )
 
 
-def test_validate_ssh_port_rejects_shell_payload():
-    with pytest.raises(HTTPException):
-        _validate_ssh_port("22; touch /tmp/pwned")
-    assert _validate_ssh_port("2222") == "2222"
+def test_validate_local_dir_accepts_external_drive_paths_with_spaces():
+    path = "/Volumes/T7 2TB/AI Models/llamacpp"
+
+    assert _validate_local_dir(path) == path
+    assert _validate_local_dir(f'"{path}"') == path
+    assert _shell_path(f"{path}/Qwen3-8B") == '"/Volumes/T7 2TB/AI Models/llamacpp/Qwen3-8B"'
+
+
+def test_validate_local_dir_accepts_windows_drive_paths_with_spaces():
+    backslash_path = r"D:\AI Models\llamacpp"
+    slash_path = "D:/AI Models/llamacpp"
+
+    assert _validate_local_dir(backslash_path) == backslash_path
+    assert _validate_local_dir(f"'{backslash_path}'") == backslash_path
+    assert _validate_local_dir(slash_path) == slash_path
+    assert _shell_path(backslash_path + r"\Qwen3-8B") == '"D:\\AI Models\\llamacpp\\Qwen3-8B"'
+
+
+def test_validate_local_dir_still_rejects_shell_metacharacters():
+    for path in [
+        "/Volumes/T7 2TB/AI Models; touch /tmp/pwned",
+        "/Volumes/T7 2TB/AI Models/$(touch pwned)",
+        "/Volumes/T7 2TB/AI Models/`touch pwned`",
+        "/Volumes/T7 2TB/AI Models/model\nnext",
+    ]:
+        with pytest.raises(HTTPException):
+            _validate_local_dir(path)
+
+
+def test_validate_local_dir_rejects_windows_shell_metacharacters():
+    for path in [
+        r"D:\AI Models\llamacpp; touch C:\pwned",
+        r"D:\AI Models\llamacpp\$(touch pwned)",
+        r"D:\AI Models\llamacpp\`touch pwned`",
+        "D:\\AI Models\\llamacpp\nnext",
+    ]:
+        with pytest.raises(HTTPException):
+            _validate_local_dir(path)
+
+
+def test_validate_local_dir_accepts_non_ascii_unicode_paths():
+    # Folder names are routinely non-ASCII on localized systems; the validator
+    # must accept them the same way it accepts spaces (see issue: spaces AND
+    # non-ASCII chars were both rejected by the old ASCII-only allowlist).
+    for path in [
+        "/Volumes/Модели/llamacpp",   # Cyrillic (POSIX / external drive)
+        "/home/josé/models",          # accented Latin
+        "/Volumes/モデル/llm",         # CJK
+        r"D:\AI Models\Модели",       # Cyrillic (Windows drive path)
+    ]:
+        assert _validate_local_dir(path) == path
+
+
+def test_validate_local_dir_rejects_metacharacters_in_unicode_paths():
+    # Widening the allowlist to Unicode must not reopen the injection surface:
+    # shell metacharacters stay rejected even alongside non-ASCII segments.
+    for path in [
+        "/Volumes/Модели; touch /tmp/pwned",
+        "/Volumes/Модели/$(touch pwned)",
+        "/Volumes/Модели/`touch pwned`",
+        "/Volumes/Модели/a|b",
+        "/Volumes/Модели\nnext",
+        r"D:\Модели\llamacpp & calc.exe",
+    ]:
+        with pytest.raises(HTTPException):
+            _validate_local_dir(path)
+
+
+def test_validate_local_dir_rejects_leading_dash_segments():
+    # A path segment starting with '-' could be parsed as a CLI option by hf/etc.
+    # (option injection) even when quoted, since quoting doesn't stop a value from
+    # being read as a flag. The validator must reject it on every platform.
+    for path in [
+        "/models/-rf",
+        "/models/-rf/llamacpp",
+        "/-oStrictHostKeyChecking=no",
+        r"D:\models\-rf",
+        "D:/models/-rf",
+    ]:
+        with pytest.raises(HTTPException):
+            _validate_local_dir(path)
 
 
 def test_validate_gpus_accepts_indexes_only():
@@ -280,10 +358,10 @@ def test_vllm_preflight_reports_cli_and_version():
     script = "\n".join(lines)
 
     assert 'export PATH="$HOME/.local/bin:$PATH"' in script
-    assert 'ODYSSEUS_VLLM_BIN="$(command -v vllm 2>/dev/null || true)"' in script
-    assert 'echo "[odysseus] vLLM CLI: $ODYSSEUS_VLLM_BIN"' in script
-    assert '"$ODYSSEUS_VLLM_BIN" --version' in script
-    assert 'ODYSSEUS_PREFLIGHT_EXIT=127' in script
+    assert 'LODESTAR_VLLM_BIN="$(command -v vllm 2>/dev/null || true)"' in script
+    assert 'echo "[lodestar] vLLM CLI: $LODESTAR_VLLM_BIN"' in script
+    assert '"$LODESTAR_VLLM_BIN" --version' in script
+    assert 'LODESTAR_PREFLIGHT_EXIT=127' in script
 
 
 def test_venv_safe_local_pip_install_strips_user_flags_only_for_local_venv():
@@ -399,16 +477,16 @@ def test_serve_preflight_failure_keeps_tmux_pane_visible():
     capture the helpful error, leaving users with a blank "crashed" card.
     """
     runner_lines = [
-        'ODYSSEUS_PREFLIGHT_EXIT=""',
+        'LODESTAR_PREFLIGHT_EXIT=""',
         'echo "ERROR: vLLM is not installed. Open Cookbook -> Dependencies and install vllm on this server, then launch again."',
-        'ODYSSEUS_PREFLIGHT_EXIT=127',
+        'LODESTAR_PREFLIGHT_EXIT=127',
     ]
     _append_serve_preflight_exit_lines(runner_lines, keep_shell_open=True)
     script = "\n".join(runner_lines)
 
     assert "ERROR: vLLM is not installed" in script
-    assert 'ODYSSEUS_PREFLIGHT_EXIT=127' in script
-    assert 'echo "=== Process exited with code $ODYSSEUS_PREFLIGHT_EXIT ==="' in script
+    assert 'LODESTAR_PREFLIGHT_EXIT=127' in script
+    assert 'echo "=== Process exited with code $LODESTAR_PREFLIGHT_EXIT ==="' in script
     assert 'exec "${SHELL:-/bin/bash}"' in script
     assert "exit 127" not in script
 
@@ -419,8 +497,8 @@ def test_serve_runner_preserves_command_exit_code():
     _append_serve_exit_code_lines(runner_lines, keep_shell_open=True)
     script = "\n".join(runner_lines)
 
-    assert "ODYSSEUS_CMD_EXIT=$?" in script
-    assert 'echo "=== Process exited with code $ODYSSEUS_CMD_EXIT ==="' in script
+    assert "LODESTAR_CMD_EXIT=$?" in script
+    assert 'echo "=== Process exited with code $LODESTAR_CMD_EXIT ==="' in script
     assert 'echo "=== Process exited with code $? ==="' not in script
 
 
@@ -432,7 +510,7 @@ def test_pip_serve_runner_emits_download_ok_before_exit_marker():
 
     assert 'echo "DOWNLOAD_OK"' in script
     assert script.index('echo "DOWNLOAD_OK"') < script.index("=== Process exited with code")
-    assert 'exit "$ODYSSEUS_CMD_EXIT"' in script
+    assert 'exit "$LODESTAR_CMD_EXIT"' in script
 
 
 def test_validate_serve_cmd_accepts_vllm_kv_cache_dtype():
@@ -523,7 +601,7 @@ def test_llama_cpp_linux_bootstrap_checks_cudart_before_cuda_build():
     _append_llama_cpp_linux_accel_build_lines(runner_lines)
     script = "\n".join(runner_lines)
 
-    assert '_odysseus_has_cudart' in script
+    assert '_lodestar_has_cudart' in script
     assert "grep -q 'libcudart\\.so'" in script
     # lib64 and lib variants for CUDA_HOME and /usr/local/cuda
     assert '$_cuh/lib64/libcudart.so' in script
@@ -533,7 +611,7 @@ def test_llama_cpp_linux_bootstrap_checks_cudart_before_cuda_build():
     # pip-installed nvidia runtime wheel sibling path
     assert 'cuda_runtime/lib/libcudart.so' in script
     # entire helper definition precedes the CUDA cmake invocation
-    assert script.index('_odysseus_has_cudart') < script.index('DGGML_CUDA=ON')
+    assert script.index('_lodestar_has_cudart') < script.index('DGGML_CUDA=ON')
 
 
 def test_llama_cpp_linux_bootstrap_cuda_cmake_present_when_cudart_found():

@@ -8,6 +8,7 @@ These are agent tools — the LLM writes fenced code blocks and they execute
 through the standard agent_tools.py pipeline.
 """
 
+import asyncio
 import json
 import logging
 import uuid
@@ -24,7 +25,9 @@ MAX_PIPELINE_STEPS = 10
 
 # ---------------------------------------------------------------------------
 # Global managers (set from app.py, same pattern as _mcp_manager)
-# ---------------------------------------------------------------------------
+# _session_manager is kept as a local cache for performance (avoiding
+# repeated get_session_manager_instance() calls). It's synced with
+# the authoritative singleton in core.models.
 _session_manager = None
 _memory_manager = None
 _memory_vector = None
@@ -33,11 +36,15 @@ _personal_docs_manager = None
 
 
 def set_session_manager(mgr):
+    """Set the global session manager. Syncs local cache + core singleton."""
     global _session_manager
     _session_manager = mgr
+    from core.models import set_session_manager_instance
+    set_session_manager_instance(mgr)
 
 
 def get_session_manager():
+    """Get the global session manager."""
     return _session_manager
 
 
@@ -60,7 +67,10 @@ def set_rag_manager(rag_mgr, personal_docs_mgr=None):
 from src.endpoint_resolver import build_chat_url, build_headers, build_models_url, resolve_endpoint_runtime
 
 
-def _resolve_model(spec: str, owner: Optional[str] = None) -> Tuple[str, str, Dict]:
+_resolve_client: Optional["httpx.AsyncClient"] = None
+
+
+async def _resolve_model(spec: str, owner: Optional[str] = None) -> Tuple[str, str, Dict]:
     """Resolve a model specifier to (endpoint_url, model_id, headers).
 
     Accepts:
@@ -73,6 +83,10 @@ def _resolve_model(spec: str, owner: Optional[str] = None) -> Tuple[str, str, Di
     from src.database import SessionLocal, ModelEndpoint
     from src.llm_core import _detect_provider, ANTHROPIC_MODELS
     from src.auth_helpers import owner_filter
+
+    global _resolve_client
+    if _resolve_client is None:
+        _resolve_client = httpx.AsyncClient(timeout=httpx.Timeout(5.0))
 
     spec = spec.strip()
     target_endpoint_name = None
@@ -106,7 +120,6 @@ def _resolve_model(spec: str, owner: Optional[str] = None) -> Tuple[str, str, Di
             headers = build_headers(api_key, base)
 
             if provider == "anthropic":
-                # Anthropic: match against hardcoded model list
                 matched = None
                 for am in ANTHROPIC_MODELS:
                     if model_name.lower() in am.lower() or am.lower() in model_name.lower():
@@ -115,11 +128,10 @@ def _resolve_model(spec: str, owner: Optional[str] = None) -> Tuple[str, str, Di
                 if matched:
                     return build_chat_url(base), matched, headers
             else:
-                # OpenAI-compatible and native Ollama: probe the provider's model list.
                 try:
                     models_url = build_models_url(base)
                     if models_url:
-                        r = httpx.get(models_url, headers=headers, timeout=5)
+                        r = await _resolve_client.get(models_url, headers=headers)
                         r.raise_for_status()
                         data = r.json()
                         model_ids = [m.get("id") for m in (data.get("data") or []) if m.get("id")]
@@ -134,12 +146,10 @@ def _resolve_model(spec: str, owner: Optional[str] = None) -> Tuple[str, str, Di
                 except Exception:
                     model_ids = []
 
-                # Exact match first
                 for mid in model_ids:
                     if mid.lower() == model_name.lower():
                         return build_chat_url(base), mid, headers
 
-                # Partial match
                 for mid in model_ids:
                     if model_name.lower() in mid.lower() or mid.lower() in model_name.lower():
                         return build_chat_url(base), mid, headers
@@ -147,6 +157,15 @@ def _resolve_model(spec: str, owner: Optional[str] = None) -> Tuple[str, str, Di
         raise ValueError(f"Model '{spec}' not found on any configured endpoint")
     finally:
         db.close()
+
+
+def _resolve_model_sync(spec: str, owner: Optional[str] = None) -> Tuple[str, str, Dict]:
+    """Sync wrapper around async _resolve_model.
+
+    Safe to call from sync contexts (threads, asyncio.to_thread, etc.)
+    where no event loop is running.
+    """
+    return asyncio.run(_resolve_model(spec, owner=owner))
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +191,7 @@ async def do_chat_with_model(content: str, session_id: Optional[str] = None, own
         return {"error": "No message provided (line 2+ is the message)"}
 
     try:
-        url, model, headers = _resolve_model(model_spec, owner=owner)
+        url, model, headers = await _resolve_model(model_spec, owner=owner)
     except ValueError as e:
         return {"error": str(e)}
 
@@ -225,7 +244,7 @@ async def do_ask_teacher(content: str, session_id: Optional[str] = None, owner: 
             return {"error": "No teacher model configured. Specify a model name or set teacher_model in settings."}
 
     try:
-        url, model, headers = _resolve_model(model_spec, owner=owner)
+        url, model, headers = await _resolve_model(model_spec, owner=owner)
     except ValueError as e:
         return {"error": str(e)}
 
@@ -271,7 +290,7 @@ async def do_second_opinion(content: str, session_id: Optional[str] = None, owne
     focus = lines[1].strip() if len(lines) > 1 else ""
 
     try:
-        reviewer_url, reviewer_model, reviewer_headers = _resolve_model(model_spec, owner=owner)
+        reviewer_url, reviewer_model, reviewer_headers = await _resolve_model(model_spec, owner=owner)
     except ValueError as e:
         return {"error": str(e)}
 
@@ -412,7 +431,7 @@ async def do_create_session(content: str, session_id: Optional[str] = None, owne
         return {"error": "Session name cannot be empty"}
 
     try:
-        url, model, headers = _resolve_model(model_spec, owner=owner)
+        url, model, headers = await _resolve_model(model_spec, owner=owner)
     except ValueError as e:
         return {"error": str(e)}
 
@@ -650,7 +669,7 @@ async def do_pipeline(content: str, session_id: Optional[str] = None, owner: Opt
         if not model_spec or not instruction:
             return {"error": f"Step {i + 1}: both 'model' and 'instruction' are required"}
         try:
-            url, model, headers = _resolve_model(model_spec, owner=owner)
+            url, model, headers = await _resolve_model(model_spec, owner=owner)
             resolved.append((url, model, headers, instruction))
         except ValueError as e:
             return {"error": f"Step {i + 1}: {e}"}
@@ -1348,7 +1367,7 @@ async def do_ui_control(content: str, session_id: Optional[str] = None, owner: O
 
         # Resolve the model to validate it exists
         try:
-            url, model_id, headers = _resolve_model(model_spec, owner=owner)
+            url, model_id, headers = await _resolve_model(model_spec, owner=owner)
         except ValueError as e:
             return {"error": str(e)}
 
@@ -1603,7 +1622,7 @@ async def do_generate_image(content: str, session_id: Optional[str] = None, owne
     if not model_spec:
         for candidate in ("gpt-image-1.5", "gpt-image-1", "dall-e-3"):
             try:
-                _resolve_model(candidate, owner=owner)
+                await _resolve_model(candidate, owner=owner)
                 model_spec = candidate
                 break
             except ValueError:
@@ -1613,7 +1632,6 @@ async def do_generate_image(content: str, session_id: Optional[str] = None, owne
             try:
                 from src.database import SessionLocal, ModelEndpoint
                 from src.auth_helpers import owner_filter
-                import httpx as _req
                 _idb = SessionLocal()
                 try:
                     _img_q = _idb.query(ModelEndpoint).filter(
@@ -1628,7 +1646,7 @@ async def do_generate_image(content: str, session_id: Optional[str] = None, owne
                         if not _ibase.endswith("/v1"):
                             _ibase += "/v1"
                         try:
-                            _r = _req.get(_ibase + "/models", timeout=3)
+                            _r = await _resolve_client.get(_ibase + "/models")
                             _r.raise_for_status()
                             _mids = [m.get("id") for m in (_r.json().get("data") or []) if m.get("id")]
                             if _mids:
@@ -1645,7 +1663,7 @@ async def do_generate_image(content: str, session_id: Optional[str] = None, owne
 
     # Resolve the model to find the right endpoint
     try:
-        url, model_id, headers = _resolve_model(model_spec, owner=owner)
+        url, model_id, headers = await _resolve_model(model_spec, owner=owner)
     except ValueError:
         return {"error": f"No endpoint found with image model '{model_spec}'. "
                 "Configure an OpenAI-compatible endpoint with image generation support."}

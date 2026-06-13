@@ -29,6 +29,7 @@ from .providers import (
     google_pse_search,
     tavily_search,
     serper_search,
+    exa_search,
     _get_search_settings,
     _get_provider_key,
     _get_result_count,
@@ -93,6 +94,24 @@ def update_search_config(api_key: str = None, **kwargs):
             SEARCH_CONFIG[k] = v
 
 
+def _resolve_primary_provider(settings: dict) -> str:
+    """Resolve the primary search provider, honoring lite-mode defaults.
+
+    Delegates to ``src.providers.selection.select_search_provider``: explicit
+    admin config always wins; otherwise full mode defaults to SearXNG and lite
+    mode prefers a key-based API provider (then keyless DuckDuckGo), so lite
+    never depends on the SearXNG container. Falls back to the raw setting if the
+    selector is unavailable for any reason.
+    """
+    try:
+        from src.constants import LODESTAR_LITE
+        from src.providers.selection import select_search_provider
+
+        return select_search_provider(settings, LODESTAR_LITE)
+    except Exception:
+        return settings.get("search_provider", "searxng")
+
+
 def _call_provider(provider_name: str, query: str, count: int, time_filter: str = None) -> List[dict]:
     """Call a search provider by name. Returns list of results or empty list."""
     if provider_name == "searxng":
@@ -107,6 +126,8 @@ def _call_provider(provider_name: str, query: str, count: int, time_filter: str 
         return tavily_search(query, count, time_filter)
     elif provider_name == "serper":
         return serper_search(query, count, time_filter)
+    elif provider_name == "exa":
+        return exa_search(query, count, time_filter)
     return []
 
 
@@ -136,7 +157,7 @@ def _build_provider_chain(primary: str) -> List[str]:
 def searxng_search_results(query: str, count: int = 10, time_filter: str = None) -> list[dict]:
     """Perform a web search using configured provider with caching and retry."""
     settings = _get_search_settings()
-    search_provider = settings.get("search_provider", "searxng")
+    search_provider = _resolve_primary_provider(settings)
     result_count = _get_result_count()
     # Use configured count if caller used default
     if count == 10:
@@ -265,7 +286,7 @@ def comprehensive_web_search(
         logger.info(f"Applying time filter: {time_filter}")
 
     settings = _get_search_settings()
-    search_provider = settings.get("search_provider", "searxng")
+    search_provider = _resolve_primary_provider(settings)
     result_count = _get_result_count()
 
     if search_provider == "disabled":

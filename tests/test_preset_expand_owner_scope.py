@@ -35,7 +35,7 @@ def _patch_model_pipeline(monkeypatch):
     """Capture the owner passed to _resolve_model and stub the LLM call."""
     seen = {}
 
-    def fake_resolve_model(spec, owner=None):
+    async def fake_resolve_model(spec, owner=None):
         seen["spec"] = spec
         seen["owner"] = owner
         return ("http://endpoint.local/v1", "test-model", {})

@@ -39,7 +39,6 @@ export function _matchesCombo(e, combo, isMac = IS_MAC) {
  * @param {Object} modules.sessionModule
  * @param {Object} modules.uiModule
  * @param {Object} modules.chatModule
- * @param {Object} modules.adminModule
  * @param {Object} modules.settingsModule
  * @param {Object} modules.searchChatModule
  * @param {Function} modules._closeCompareIfActive
@@ -49,16 +48,16 @@ export function _matchesCombo(e, combo, isMac = IS_MAC) {
 export function initKeyboardShortcuts(modules) {
   const {
     el, Storage, sessionModule, uiModule, chatModule,
-    adminModule, settingsModule, searchChatModule,
+    settingsModule, searchChatModule,
     _closeCompareIfActive, _deactivateIncognito, API_BASE
   } = modules;
 
-  window._odysseusKeybinds = { ..._defaultKeybinds };
+  window._lodestarKeybinds = { ..._defaultKeybinds };
 
   // Load saved keybinds
   fetch('/api/auth/settings', { credentials: 'same-origin' })
     .then(r => r.json())
-    .then(s => { if (s.keybinds) window._odysseusKeybinds = { ..._defaultKeybinds, ...s.keybinds }; })
+    .then(s => { if (s.keybinds) window._lodestarKeybinds = { ..._defaultKeybinds, ...s.keybinds }; })
     .catch(() => {});
 
   // ── Esc cancels select mode (capture phase, before modal-close) ──
@@ -142,7 +141,7 @@ export function initKeyboardShortcuts(modules) {
   };
 
   document.addEventListener('keydown', (e) => {
-    const kb = window._odysseusKeybinds;
+    const kb = window._lodestarKeybinds;
 
     if (_matchesCombo(e, kb.search)) {
       e.preventDefault();
@@ -211,7 +210,7 @@ export function initKeyboardShortcuts(modules) {
           } else {
             sessionModule.setCurrentSessionId(null);
             el('chat-history').innerHTML = '';
-            el('current-meta').textContent = 'Odysseus Chat';
+            el('current-meta').textContent = 'Lodestar Chat';
             Storage.remove('lastSessionId');
             if (chatModule && chatModule.showWelcomeScreen) chatModule.showWelcomeScreen();
           }

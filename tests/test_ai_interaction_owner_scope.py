@@ -23,9 +23,9 @@ def test_model_listing_and_image_fallback_are_owner_scoped():
 
     assert "owner: Optional[str] = None" in list_body
     assert "owner_filter(query, ModelEndpoint, owner)" in list_body
-    assert "_resolve_model(candidate, owner=owner)" in image_body
+    assert "await _resolve_model(candidate, owner=owner)" in image_body
     assert "owner_filter(_img_q, ModelEndpoint, owner)" in image_body
-    assert "_resolve_model(model_spec, owner=owner)" in image_body
+    assert "await _resolve_model(model_spec, owner=owner)" in image_body
 
 
 @pytest.mark.parametrize("tool,content", [

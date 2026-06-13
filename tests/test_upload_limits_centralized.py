@@ -20,19 +20,32 @@ REPO = Path(__file__).resolve().parent.parent
 
 # const name -> (env var, default bytes)
 _LIMITS = {
-    "GALLERY_UPLOAD_MAX_BYTES": ("ODYSSEUS_GALLERY_UPLOAD_MAX_BYTES", 100 * 1024 * 1024),
-    "GALLERY_TRANSFORM_UPLOAD_MAX_BYTES": ("ODYSSEUS_GALLERY_TRANSFORM_UPLOAD_MAX_BYTES", 25 * 1024 * 1024),
-    "MEMORY_IMPORT_MAX_BYTES": ("ODYSSEUS_MEMORY_IMPORT_MAX_BYTES", 10 * 1024 * 1024),
-    "PERSONAL_UPLOAD_MAX_BYTES": ("ODYSSEUS_PERSONAL_UPLOAD_MAX_BYTES", 25 * 1024 * 1024),
-    "EMAIL_COMPOSE_UPLOAD_MAX_BYTES": ("ODYSSEUS_EMAIL_COMPOSE_UPLOAD_MAX_BYTES", 25 * 1024 * 1024),
-    "STT_MAX_AUDIO_BYTES": ("ODYSSEUS_STT_MAX_AUDIO_BYTES", 25 * 1024 * 1024),
-    "ICS_MAX_BYTES": ("ODYSSEUS_ICS_MAX_BYTES", 10 * 1024 * 1024),
+    "GALLERY_UPLOAD_MAX_BYTES": ("LODESTAR_GALLERY_UPLOAD_MAX_BYTES", 100 * 1024 * 1024),
+    "GALLERY_TRANSFORM_UPLOAD_MAX_BYTES": ("LODESTAR_GALLERY_TRANSFORM_UPLOAD_MAX_BYTES", 25 * 1024 * 1024),
+    "MEMORY_IMPORT_MAX_BYTES": ("LODESTAR_MEMORY_IMPORT_MAX_BYTES", 10 * 1024 * 1024),
+    "PERSONAL_UPLOAD_MAX_BYTES": ("LODESTAR_PERSONAL_UPLOAD_MAX_BYTES", 25 * 1024 * 1024),
+    "EMAIL_COMPOSE_UPLOAD_MAX_BYTES": ("LODESTAR_EMAIL_COMPOSE_UPLOAD_MAX_BYTES", 25 * 1024 * 1024),
+    "STT_MAX_AUDIO_BYTES": ("LODESTAR_STT_MAX_AUDIO_BYTES", 25 * 1024 * 1024),
+    "ICS_MAX_BYTES": ("LODESTAR_ICS_MAX_BYTES", 10 * 1024 * 1024),
+}
+
+# const name -> deprecated ODYSSEUS_* env var that still works as a fallback
+_LEGACY_LIMITS = {
+    "GALLERY_UPLOAD_MAX_BYTES": "ODYSSEUS_GALLERY_UPLOAD_MAX_BYTES",
+    "GALLERY_TRANSFORM_UPLOAD_MAX_BYTES": "ODYSSEUS_GALLERY_TRANSFORM_UPLOAD_MAX_BYTES",
+    "MEMORY_IMPORT_MAX_BYTES": "ODYSSEUS_MEMORY_IMPORT_MAX_BYTES",
+    "PERSONAL_UPLOAD_MAX_BYTES": "ODYSSEUS_PERSONAL_UPLOAD_MAX_BYTES",
+    "EMAIL_COMPOSE_UPLOAD_MAX_BYTES": "ODYSSEUS_EMAIL_COMPOSE_UPLOAD_MAX_BYTES",
+    "STT_MAX_AUDIO_BYTES": "ODYSSEUS_STT_MAX_AUDIO_BYTES",
+    "ICS_MAX_BYTES": "ODYSSEUS_ICS_MAX_BYTES",
 }
 
 
 def _reload_clean(monkeypatch):
-    """Reload upload_limits with all the limit env vars unset."""
+    """Reload upload_limits with all the limit env vars (new + legacy) unset."""
     for env, _ in _LIMITS.values():
+        monkeypatch.delenv(env, raising=False)
+    for env in _LEGACY_LIMITS.values():
         monkeypatch.delenv(env, raising=False)
     return importlib.reload(upload_limits)
 
@@ -52,8 +65,15 @@ def test_default_value(monkeypatch, name, env, default):
 
 @pytest.mark.parametrize("name,env,default", [(n, e, d) for n, (e, d) in _LIMITS.items()])
 def test_env_override(monkeypatch, name, env, default):
-    for e, _ in _LIMITS.values():
-        monkeypatch.delenv(e, raising=False)
+    _reload_clean(monkeypatch)
+    monkeypatch.setenv(env, "4242")
+    mod = importlib.reload(upload_limits)
+    assert getattr(mod, name) == 4242
+
+
+@pytest.mark.parametrize("name,env", [(n, e) for n, e in _LEGACY_LIMITS.items()])
+def test_legacy_env_override(monkeypatch, name, env):
+    _reload_clean(monkeypatch)
     monkeypatch.setenv(env, "4242")
     mod = importlib.reload(upload_limits)
     assert getattr(mod, name) == 4242
@@ -61,8 +81,7 @@ def test_env_override(monkeypatch, name, env, default):
 
 @pytest.mark.parametrize("env", [e for e, _ in _LIMITS.values()])
 def test_invalid_env_fails_fast(monkeypatch, env):
-    for e, _ in _LIMITS.values():
-        monkeypatch.delenv(e, raising=False)
+    _reload_clean(monkeypatch)
     monkeypatch.setenv(env, "not-an-int")
     with pytest.raises(ValueError, match=env):
         importlib.reload(upload_limits)
@@ -70,8 +89,7 @@ def test_invalid_env_fails_fast(monkeypatch, env):
 
 @pytest.mark.parametrize("env", [e for e, _ in _LIMITS.values()])
 def test_non_positive_env_rejected(monkeypatch, env):
-    for e, _ in _LIMITS.values():
-        monkeypatch.delenv(e, raising=False)
+    _reload_clean(monkeypatch)
     monkeypatch.setenv(env, "0")
     with pytest.raises(ValueError, match="greater than 0"):
         importlib.reload(upload_limits)

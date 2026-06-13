@@ -15,7 +15,7 @@ import routes.skills_routes as skills_routes
 def test_call_teacher_scopes_model_resolution_to_owner(monkeypatch):
     seen = {}
 
-    def fake_resolve_model(spec, owner=None):
+    async def fake_resolve_model(spec, owner=None):
         seen["spec"] = spec
         seen["owner"] = owner
         return ("http://endpoint.local/v1", "teacher-model", {})
@@ -45,7 +45,7 @@ def test_audit_teacher_resolution_scoped_to_owner(monkeypatch):
     def fake_get_setting(key, default=None):
         return {"teacher_enabled": True, "teacher_model": "teacher-model"}.get(key, default)
 
-    def fake_resolve_model(spec, owner=None):
+    async def fake_resolve_model(spec, owner=None):
         seen["spec"] = spec
         seen["owner"] = owner
         return ("http://endpoint.local/v1", "teacher-model", {})
@@ -56,7 +56,7 @@ def test_audit_teacher_resolution_scoped_to_owner(monkeypatch):
     # list_model_ids is best-effort; force it to no-op so the worker model passes through.
     monkeypatch.setattr("src.llm_core.list_model_ids", lambda url, headers=None: [])
 
-    url, model, headers, teacher = skills_routes._resolve_audit_models(owner="alice")
+    url, model, headers, teacher = asyncio.run(skills_routes._resolve_audit_models(owner="alice"))
 
     assert (url, model) == ("http://worker.local/v1", "worker-model")
     assert teacher == ("http://endpoint.local/v1", "teacher-model", {})

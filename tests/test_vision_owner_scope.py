@@ -1,6 +1,5 @@
 from pathlib import Path
 
-from src import ai_interaction
 from src import document_processor as dp
 
 
@@ -10,11 +9,11 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_configured_vision_model_resolution_passes_owner(monkeypatch):
     seen = []
 
-    def fake_resolve_model(spec, owner=None):
+    def fake_resolve_model_sync(spec, owner=None):
         seen.append((spec, owner))
         return ("http://example.test/chat/completions", spec, {"Authorization": "Bearer token"})
 
-    monkeypatch.setattr(ai_interaction, "_resolve_model", fake_resolve_model)
+    monkeypatch.setattr("src.ai_interaction._resolve_model_sync", fake_resolve_model_sync)
 
     assert dp._resolve_vl_model("gpt-4o", owner="alice") == (
         "http://example.test/chat/completions",
@@ -27,13 +26,13 @@ def test_configured_vision_model_resolution_passes_owner(monkeypatch):
 def test_auto_detected_vision_model_resolution_passes_owner(monkeypatch):
     seen = []
 
-    def fake_resolve_model(spec, owner=None):
+    def fake_resolve_model_sync(spec, owner=None):
         seen.append((spec, owner))
         if spec == "llava":
             return ("http://example.test/chat/completions", spec, {})
         raise ValueError("not available")
 
-    monkeypatch.setattr(ai_interaction, "_resolve_model", fake_resolve_model)
+    monkeypatch.setattr("src.ai_interaction._resolve_model_sync", fake_resolve_model_sync)
 
     assert dp._resolve_vl_model("", owner="alice") == (
         "http://example.test/chat/completions",

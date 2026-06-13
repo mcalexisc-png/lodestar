@@ -1,6 +1,6 @@
 """Cross-platform OS compatibility helpers.
 
-Odysseus began as a Linux/macOS/Docker-only app. This module centralizes the
+Lodestar began as a Linux/macOS/Docker-only app. This module centralizes the
 small set of OS differences needed to run it *natively* on Windows so the rest
 of the codebase can stay platform-agnostic. Import from here instead of
 sprinkling ``os.name == "nt"`` checks (and POSIX-only calls) across modules.
@@ -191,6 +191,8 @@ def _windows_bash_fallbacks() -> List[str]:
         base = os.environ.get(env_name)
         if base:
             roots.append(ntpath.join(base, "Git"))
+            if env_name == "LocalAppData":
+                roots.append(ntpath.join(base, "Programs", "Git"))
     roots.extend(_WINDOWS_BASH_DEFAULT_ROOTS)
 
     paths: List[str] = []
@@ -232,7 +234,7 @@ def git_bash_path(path: str | Path) -> str:
 def find_bash() -> Optional[str]:
     """Locate a real ``bash`` interpreter, or None.
 
-    On Windows this is typically Git Bash / WSL. Many Odysseus features (the
+    On Windows this is typically Git Bash / WSL. Many Lodestar features (the
     agent ``bash`` tool, background jobs, Cookbook scripts) emit bash syntax, so
     when a bash is present we use it and keep full parity with POSIX. Result is
     cached.
@@ -366,6 +368,10 @@ def _ssh_exec_argv(
     strict_host_key_checking: bool | None = None,
 ) -> list[str]:
     """Build a consistent ssh argv for remote command execution."""
+    remote_value = str(remote or "").strip()
+    remote_host = remote_value.rsplit("@", 1)[-1]
+    if not remote_value or remote_value.startswith("-") or not remote_host or remote_host.startswith("-"):
+        raise ValueError("Invalid SSH remote host")
     argv = ["ssh"]
     if connect_timeout is not None:
         argv.extend(["-o", f"ConnectTimeout={int(connect_timeout)}"])

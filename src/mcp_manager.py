@@ -25,7 +25,7 @@ def _format_mcp_connection_error(name: str, command: str = "", args: Optional[Li
             f"{raw_error}\n\n"
             "Browser MCP could not start. On fresh installs, cache the Playwright MCP package once before connecting:\n\n"
             "npx -y @playwright/mcp@latest --version\n\n"
-            "Then restart Odysseus and reconnect the Browser MCP server."
+            "Then restart Lodestar and reconnect the Browser MCP server."
         )
 
     return raw_error
@@ -144,6 +144,44 @@ class McpManager:
         self._connect_tasks: Dict[str, Any] = {}
         # Tracking updates to tools/connections for RAG indexing / prompt cache
         self._generation = 0
+        # Optional runtime tool-access policy provider. A callable returning
+        # {server_id: {"disabled": set[str], "allowed": set[str] | None}}.
+        # When set, call_tool() enforces it as defense-in-depth at the execution
+        # boundary (so a hallucinated/stale qualified name can't bypass the
+        # admin-configured per-tool allow/deny lists that only hide tools from
+        # the prompt). Injected by the routes layer, which owns the DB.
+        self._tool_policy_provider: Optional[Any] = None
+
+    def set_tool_policy_provider(self, provider) -> None:
+        """Install a callable -> {server_id: {"disabled": set, "allowed": set|None}}.
+
+        ``allowed=None`` means "no allowlist for this server" (all non-disabled
+        tools permitted). ``allowed=set()`` would block every tool. ``disabled``
+        always wins over ``allowed``.
+        """
+        self._tool_policy_provider = provider
+
+    def _tool_access_blocked(self, server_id: str, tool_name: str) -> Optional[str]:
+        """Return a rejection reason if policy blocks this tool, else None."""
+        provider = self._tool_policy_provider
+        if provider is None:
+            return None
+        try:
+            policy = provider() or {}
+        except Exception as e:
+            logger.warning("MCP tool policy provider failed (%s); allowing call", e)
+            return None
+        server_policy = policy.get(server_id) or {}
+        disabled = server_policy.get("disabled") or set()
+        if tool_name in disabled:
+            return f"MCP tool '{tool_name}' on server '{server_id}' is disabled by admin policy."
+        allowed = server_policy.get("allowed")
+        if allowed is not None and tool_name not in allowed:
+            return (
+                f"MCP tool '{tool_name}' on server '{server_id}' is not in the "
+                f"admin allowlist."
+            )
+        return None
 
     async def connect_server(
         self,
@@ -440,6 +478,13 @@ class McpManager:
 
         server_id = parts[1]
         tool_name = parts[2]
+
+        # Defense-in-depth: enforce the admin per-tool allow/deny policy at the
+        # execution boundary, not just by hiding tools from the prompt.
+        blocked_reason = self._tool_access_blocked(server_id, tool_name)
+        if blocked_reason:
+            logger.warning("MCP tool blocked by policy: %s", qualified_name)
+            return {"error": blocked_reason, "exit_code": 1}
 
         session = self._sessions.get(server_id)
         if not session:

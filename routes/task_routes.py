@@ -42,7 +42,7 @@ def _maybe_cascade_calendar_event(task) -> None:
     from core.middleware import INTERNAL_TOOL_HEADER, INTERNAL_TOOL_TOKEN
     headers = {INTERNAL_TOOL_HEADER: INTERNAL_TOOL_TOKEN}
     if task.owner:
-        headers["X-Odysseus-Owner"] = task.owner
+        headers["X-Lodestar-Owner"] = task.owner
 
     # Strategy 1: explicit UID marker in prompt.
     event_uid = ""
@@ -460,8 +460,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         if req.task_type == "action" and not req.action:
             raise HTTPException(400, "Action name is required for action tasks")
         # Block shell-executing action types for non-admins. action_run_local
-        # uses subprocess.run(shell=True) and ssh_command / run_script run
-        # arbitrary commands.
+        # and ssh_command / run_script run arbitrary commands via bash -c.
         if req.task_type == "action" and req.action in _ADMIN_ONLY_ACTIONS and not _is_admin(user):
             raise HTTPException(403, f"Action '{req.action}' requires admin privileges")
         if req.trigger_type == "schedule" and not req.schedule:

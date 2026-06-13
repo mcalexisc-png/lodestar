@@ -25,6 +25,11 @@ logger = logging.getLogger(__name__)
 class MemoryVectorStore:
     """Vector index over memory entries for semantic retrieval."""
 
+    # TODO(lodestar): "odysseus_memories" is a persisted ChromaDB collection
+    # name. Renaming it would orphan existing users' indexed memory data —
+    # needs a migration (create lodestar_memories, copy/re-embed, drop old),
+    # not a text rename. Same bucket as the odysseus_kind/odysseus_ref DB
+    # columns and src/rag_vector.py's COLLECTION_NAME.
     COLLECTION_NAME = "odysseus_memories"
 
     def __init__(self, data_dir: str, embedding_model=None):
