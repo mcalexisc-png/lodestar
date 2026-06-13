@@ -433,7 +433,19 @@ Common internal-only ports from the default docs/compose setup:
 ## Contributing
 Help is welcome. The best entry points are fresh-install testing, provider setup
 bugs, mobile/editor polish, docs, and small focused refactors. See
-[ROADMAP.md](ROADMAP.md) for the current help-wanted list.
+[ROADMAP.md](ROADMAP.md) for the current help-wanted list and
+[CONTRIBUTING.md](CONTRIBUTING.md) for setup, testing, and PR guidelines.
+
+## Documentation
+
+| Document | Description |
+|---|---|
+| [docs/install.md](docs/install.md) | Every install path: Docker, native, lite, Windows, macOS |
+| [docs/usage.md](docs/usage.md) | Feature guide: chat, agent, cookbook, research, email, calendar, etc. |
+| [docs/configuration.md](docs/configuration.md) | Full env-var reference table with legacy aliases |
+| [docs/plugin-authoring.md](docs/plugin-authoring.md) | MCP + in-process plugin authoring guide |
+| [docs/benchmarks.md](docs/benchmarks.md) | Performance numbers and how to reproduce them |
+| [docs/adr/](docs/adr/) | Architecture decision records |
 
 ## Configuration
 Most setup is done inside the app with `/setup` or **Settings**. Use `.env`

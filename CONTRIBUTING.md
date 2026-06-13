@@ -25,8 +25,8 @@ End-users cloning the repo will land on `dev` by default. To run the curated/sta
 Docker is the recommended path for normal testing:
 
 ```bash
-git clone https://github.com/pewdiepie-archdaemon/odysseus.git
-cd odysseus
+git clone https://github.com/<you>/lodestar.git
+cd lodestar
 cp .env.example .env
 docker compose up -d --build
 ```
@@ -57,7 +57,7 @@ For Docker-related changes:
 ```bash
 docker compose config
 docker compose up -d --build
-docker compose logs --tail=120 odysseus
+docker compose logs --tail=120 lodestar
 ```
 
 Mention what you ran in the pull request description. If you could not run a check, say so.
