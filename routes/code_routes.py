@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 
 
 def _get_workspace_root() -> str:
-    from src.settings import get_setting
-    return get_setting("workspace_root", os.path.expanduser("~"))
+    from routes.workspace_routes import get_workspace_root as _ws_root
+    return _ws_root()
 
 
 def _resolve_path(raw_path: str) -> str:

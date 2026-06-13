@@ -729,6 +729,8 @@ logger.info("Webhook & API token routes initialized")
 # Code Workspace — file tree, editor, execution, snippets
 from routes.code_routes import setup_code_routes
 app.include_router(setup_code_routes())
+from routes.workspace_routes import setup_workspace_routes
+app.include_router(setup_workspace_routes())
 
 # Notes (Google Keep-style notes/todos)
 from routes.note_routes import setup_note_routes

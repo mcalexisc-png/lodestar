@@ -36964,6 +36964,78 @@ body.theme-frosted .modal {
 }
 .code-output-action:hover { opacity: 1; }
 
+/* ── Workspace switcher ── */
+
+#workspace-switcher {
+  border-bottom: 1px solid var(--border);
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.workspace-current {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: .7;
+  transition: opacity .15s;
+}
+.workspace-current:hover { opacity: 1; }
+.workspace-current svg { flex-shrink: 0; opacity: .5; }
+.workspace-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.workspace-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 4px;
+  padding-left: 4px;
+  border-left: 1px solid var(--border);
+}
+
+.workspace-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+  opacity: .6;
+  transition: opacity .15s, background .15s;
+}
+.workspace-item:hover { opacity: 1; background: color-mix(in srgb, var(--fg) 5%, transparent); }
+.workspace-item.active { opacity: 1; color: var(--accent, var(--red)); }
+.workspace-item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-item-path {
+  flex-shrink: 0;
+  font-size: 10px;
+  opacity: .4;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace-item-del {
+  background: none;
+  border: none;
+  color: var(--fg);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity .15s;
+}
+.workspace-item:hover .workspace-item-del { opacity: .4; }
+.workspace-item-del:hover { opacity: 1 !important; }
+
+.workspace-add { opacity: .5; gap: 6px; }
+.workspace-add svg { flex-shrink: 0; }
+.workspace-add:hover { opacity: 1; }
+
 /* ── Codebase Q&A panel ── */
 
 .code-qa {

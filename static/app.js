@@ -920,6 +920,14 @@ function initializeEventListeners() {
     }
   })();
 
+  // Workspace switcher — load on startup
+  (async () => {
+    try {
+      const m = await import('./js/workspace.js');
+      if (m.default && m.default.loadWorkspaces) m.default.loadWorkspaces();
+    } catch (_) {}
+  })();
+
   // Code tool button
   const toolCodeBtn = el('tool-code-btn');
   if (toolCodeBtn) {
