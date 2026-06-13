@@ -39,7 +39,6 @@ export function _matchesCombo(e, combo, isMac = IS_MAC) {
  * @param {Object} modules.sessionModule
  * @param {Object} modules.uiModule
  * @param {Object} modules.chatModule
- * @param {Object} modules.adminModule
  * @param {Object} modules.settingsModule
  * @param {Object} modules.searchChatModule
  * @param {Function} modules._closeCompareIfActive
@@ -49,7 +48,7 @@ export function _matchesCombo(e, combo, isMac = IS_MAC) {
 export function initKeyboardShortcuts(modules) {
   const {
     el, Storage, sessionModule, uiModule, chatModule,
-    adminModule, settingsModule, searchChatModule,
+    settingsModule, searchChatModule,
     _closeCompareIfActive, _deactivateIncognito, API_BASE
   } = modules;
 

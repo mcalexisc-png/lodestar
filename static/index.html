@@ -213,12 +213,17 @@
       }, { once: true });
     })();
   </script>
-  <link rel="stylesheet" href="/static/style.css">
+  <!-- style.css is loaded with media="print" so it doesn't block first paint;
+       then flipped to "all" after load (mirrors the katex-css pattern above). -->
+  <link rel="stylesheet" href="/static/style.css" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="/static/style.css"></noscript>
   <link rel="modulepreload" href="/static/app.js">
   <link rel="modulepreload" href="/static/js/chat.js">
   <link rel="modulepreload" href="/static/js/ui.js">
   <link rel="modulepreload" href="/static/js/sessions.js">
   <link rel="modulepreload" href="/static/js/markdown.js">
+  <link rel="modulepreload" href="/static/js/storage.js">
+  <link rel="modulepreload" href="/static/js/fileHandler.js">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content, viewport-fit=cover" />
 </head>
 <body>
@@ -2348,9 +2353,6 @@
 <script type="module" src="/static/js/dragSort.js"></script>
 <script type="module" src="/static/js/sessions.js"></script>
 <script type="module" src="/static/js/memory.js"></script>
-<script type="module" src="/static/js/skills.js"></script>
-<script type="module" src="/static/js/tourHints.js"></script>
-<script type="module" src="/static/js/tourAutoplay.js"></script>
 <script type="module" src="/static/js/fileHandler.js"></script>
 <script type="module" src="/static/js/voiceRecorder.js"></script>
 <script type="module" src="/static/js/models.js"></script>  <!-- This must come BEFORE app.js -->
@@ -2360,19 +2362,13 @@
 <script type="module" src="/static/js/spinner.js"></script>
 <script type="module" src="/static/js/tts-ai.js"></script>
 <script type="module" src="/static/js/document.js"></script>
-<script type="module" src="/static/js/gallery.js"></script>
 <script type="module" src="/static/js/chatRenderer.js"></script>
 <script type="module" src="/static/js/codeRunner.js"></script>
 <script type="module" src="/static/js/chatStream.js"></script>
 <script type="module" src="/static/js/chat.js?v=20260604s"></script>
-<script type="module" src="/static/js/cookbook.js"></script>
-<script src="/static/js/cookbookSchedule.js"></script>
 <script type="module" src="/static/js/search-chat.js"></script>
 <script type="module" src="/static/js/compare/index.js"></script>
-<script type="module" src="/static/js/theme.js"></script>
 <script type="module" src="/static/js/censor.js"></script>
-<script type="module" src="/static/js/settings.js"></script>
-<script type="module" src="/static/js/admin.js"></script>
 <script type="module" src="/static/js/hwfit_wizard.js"></script>
 <script type="module" src="/static/js/assistant.js"></script>
 <script type="module" src="/static/app.js"></script>  <!-- app.js must be LAST -->

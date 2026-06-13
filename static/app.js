@@ -20,23 +20,10 @@ import sessionModule from './js/sessions.js';
 import memoryModule from './js/memory.js';
 import voiceRecorderModule from './js/voiceRecorder.js';
 import censorModule from './js/censor.js';
-import galleryModule from './js/gallery.js';
-import tasksModule from './js/tasks.js';
-import calendarModule from './js/calendar.js';
-import notesModule from './js/notes.js';
-import adminModule from './js/admin.js';
 import settingsModule from './js/settings.js';
-// Eagerly bind unified minimize/restore behavior across all tool modals.
-import './js/modalManager.js';
 // Desktop window tiling — drag a modal near an edge/corner to snap.
 import './js/tileManager.js';
 import themeModule from './js/theme.js';
-// IMPORTANT: import cookbook.js with NO ?v= query — the same plain specifier
-// every other importer (cookbook-hwfit.js / cookbook-diagnosis.js) uses. A query
-// mismatch makes the browser load cookbook.js twice as separate modules (two
-// _envState objects), which broke server selection. Keep all cookbook imports
-// unversioned so this can't recur.
-import cookbookModule from './js/cookbook.js';
 import groupModule from './js/group.js';
 import * as researchPanelModule from './js/research/panel.js';
 import ttsModule from './js/tts-ai.js';
@@ -45,12 +32,18 @@ import { initKeyboardShortcuts } from './js/keyboard-shortcuts.js';
 import { initSidebarLayout, syncRailSide } from './js/sidebar-layout.js';
 import { initSectionCollapse, initSectionDrag } from './js/section-management.js';
 
+// ── Lazy-loaded route modules (imported on first use, not at page load) ──
+let galleryModule = null;
+let tasksModule = null;
+let calendarModule = null;
+let notesModule = null;
+let adminModule = null;
+let cookbookModule = null;
+
 const API_BASE = window.location.origin;
 window.themeModule = themeModule;
 window.sessionModule = sessionModule;
 window.uiModule = uiModule;
-window.adminModule = adminModule;
-window.cookbookModule = cookbookModule;
 
 // Redirect to login on 401 from any fetch
 const _origFetch = window.fetch;
@@ -837,11 +830,11 @@ function initializeEventListeners() {
   const toolCookbookBtn = el('tool-cookbook-btn');
   if (toolCookbookBtn) {
     toolCookbookBtn.addEventListener('click', async () => {
+      if (!cookbookModule) cookbookModule = (await import('./js/cookbook.js')).default;
+      window.cookbookModule = cookbookModule;
       if (!cookbookModule) return;
-      // Try minimized→restore or open→minimize via the manager first
       const Modals = await import('./js/modalManager.js');
       if (!Modals.toggle('cookbook-modal')) {
-        // Not registered yet → fresh open
         cookbookModule.open();
       }
     });
@@ -866,6 +859,7 @@ function initializeEventListeners() {
   const toolGalleryBtn = el('tool-gallery-btn');
   if (toolGalleryBtn) {
     toolGalleryBtn.addEventListener('click', async () => {
+      if (!galleryModule) galleryModule = (await import('./js/gallery.js')).default;
       if (!galleryModule) return;
       const Modals = await import('./js/modalManager.js');
       if (!Modals.toggle('gallery-modal')) {
@@ -884,7 +878,8 @@ function initializeEventListeners() {
     btn.addEventListener("click", () => {
     });
   });
-    toolTasksBtn.addEventListener('click', () => {
+    toolTasksBtn.addEventListener('click', async () => {
+      if (!tasksModule) tasksModule = (await import('./js/tasks.js')).default;
       if (tasksModule) {
         tasksModule.isTasksOpen() ? tasksModule.closeTasks() : tasksModule.openTasks();
       }
@@ -895,10 +890,9 @@ function initializeEventListeners() {
   const toolCalendarBtn = el('tool-calendar-btn');
   if (toolCalendarBtn) {
     toolCalendarBtn.addEventListener('click', async () => {
+      if (!calendarModule) calendarModule = (await import('./js/calendar.js')).default;
       if (!calendarModule) return;
       const Modals = await import('./js/modalManager.js');
-      // toggle returns true when a registered modal was minimized/restored;
-      // returns false when nothing is registered → open fresh.
       if (!Modals.toggle('calendar-modal')) {
         if (calendarModule.isCalendarOpen()) calendarModule.closeCalendar();
         else calendarModule.openCalendar();
@@ -909,17 +903,21 @@ function initializeEventListeners() {
   // Notes tool button
   const toolNotesBtn = el('tool-notes-btn');
   if (toolNotesBtn) {
-    toolNotesBtn.addEventListener('click', () => {
+    toolNotesBtn.addEventListener('click', async () => {
+      if (!notesModule) notesModule = (await import('./js/notes.js')).default;
       if (notesModule) {
         notesModule.togglePanel();
       }
     });
   }
-  // Refresh notes due-reminder badge on load and every 5 minutes
-  if (notesModule && notesModule.refreshDueBadge) {
-    notesModule.refreshDueBadge();
-    setInterval(() => notesModule.refreshDueBadge(), 5 * 60 * 1000);
-  }
+  // Refresh notes due-reminder badge — loaded lazily for first use
+  (async () => {
+    if (!notesModule) notesModule = (await import('./js/notes.js')).default;
+    if (notesModule && notesModule.refreshDueBadge) {
+      notesModule.refreshDueBadge();
+      setInterval(() => notesModule.refreshDueBadge(), 5 * 60 * 1000);
+    }
+  })();
 
   // URL-based panel routing — bookmark /calendar, /notes, /cookbook etc
   // and the matching tool opens automatically on page load.
@@ -984,14 +982,11 @@ function initializeEventListeners() {
     }
   }
   const _routeOpen = {
-    '/notes':    () => {
+    '/notes':    async () => {
+      if (!notesModule) notesModule = (await import('./js/notes.js')).default;
       if (!notesModule) return;
       _collapseSidebarToRail();
       notesModule.openPanel();
-      // Promote to fullscreen-with-rail-visible. The pane wires up its own
-      // fullscreen toggle (#notes-fullscreen-toggle); piggyback on that
-      // path so the button icon flips and overflow:hidden gets applied
-      // alongside. Retry on rAF in case the panel mounts a tick later.
       const _go = () => {
         const btn = document.getElementById('notes-fullscreen-toggle');
         const pane = document.querySelector('.notes-pane');
@@ -1005,7 +1000,10 @@ function initializeEventListeners() {
         setTimeout(_go, 200);
       }
     },
-    '/calendar': () => calendarModule && calendarModule.openCalendar(),
+    '/calendar': async () => {
+      if (!calendarModule) calendarModule = (await import('./js/calendar.js')).default;
+      if (calendarModule) calendarModule.openCalendar();
+    },
     '/cookbook': () => document.getElementById('tool-cookbook-btn')?.click(),
     '/email':    () => {
       // Collapse the wide sidebar → icon rail (48px) so the user keeps
@@ -1124,7 +1122,11 @@ function initializeEventListeners() {
     userBarProfile.addEventListener('click', () => settingsModule.open('account'));
   }
   if (userBarAdmin) {
-    userBarAdmin.addEventListener('click', () => adminModule.open());
+    userBarAdmin.addEventListener('click', async () => {
+      if (!adminModule) adminModule = (await import('./js/admin.js')).default;
+      window.adminModule = adminModule;
+      if (adminModule) adminModule.open();
+    });
   }
 
   // Fetch auth status — populate user bar and show admin button if admin
@@ -3333,7 +3335,7 @@ function initializeEventListeners() {
   // Keyboard shortcuts (extracted to js/keyboard-shortcuts.js)
   initKeyboardShortcuts({
     el, Storage, sessionModule, uiModule, chatModule,
-    adminModule, settingsModule, searchChatModule,
+    settingsModule, searchChatModule,
     _closeCompareIfActive, _deactivateIncognito, API_BASE
   });
   
