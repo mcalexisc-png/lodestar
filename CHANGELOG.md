@@ -94,4 +94,4 @@ First release of Lodestar, a fork of
 - No CSRF tokens (relies on SameSite=Lax)
 - Cold start still above 3s target
 
-[0.1.0]: https://github.com/<you>/lodestar/releases/tag/v0.1.0
+[0.1.0]: https://github.com/mcalexisc-png/lodestar/releases/tag/v0.1.0
