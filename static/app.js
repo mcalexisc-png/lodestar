@@ -951,6 +951,30 @@ function initializeEventListeners() {
     });
   }
 
+  // Approvals tool button
+  let approvalModule = null;
+  const toolApprovalBtn = el('tool-approval-btn');
+  if (toolApprovalBtn) {
+    toolApprovalBtn.addEventListener('click', async () => {
+      if (!approvalModule) approvalModule = (await import('./js/approvals.js')).default;
+      if (approvalModule) {
+        approvalModule.isOpen() ? approvalModule.closePanel() : approvalModule.openPanel();
+      }
+    });
+  }
+
+  // Read Later tool button
+  let readlaterModule = null;
+  const toolReadlaterBtn = el('tool-readlater-btn');
+  if (toolReadlaterBtn) {
+    toolReadlaterBtn.addEventListener('click', async () => {
+      if (!readlaterModule) readlaterModule = (await import('./js/readlater.js')).default;
+      if (readlaterModule) {
+        readlaterModule.isOpen() ? readlaterModule.closePanel() : readlaterModule.openPanel();
+      }
+    });
+  }
+
   // URL-based panel routing — bookmark /calendar, /notes, /cookbook etc
   // and the matching tool opens automatically on page load.
   const urlPath = window.location.pathname;
@@ -2453,6 +2477,8 @@ function initializeEventListeners() {
     'tool-memory':         '#tool-memory-btn',
     'tool-notes':          '#tool-notes-btn',
     'tool-prompts':        '#tool-prompts-btn',
+    'tool-approval':       '#tool-approval-btn',
+    'tool-readlater':      '#tool-readlater-btn',
     'tool-tasks':          '#tool-tasks-btn',
     'tool-code':           '#tool-code-btn',
     'tool-theme':          '#tool-theme-btn',
@@ -3471,6 +3497,8 @@ function startLodestarApp() {
     'rail-calendar':  'tool-calendar-btn',
     'rail-notes':     'tool-notes-btn',
     'rail-prompts':   'tool-prompts-btn',
+    'rail-approval':   'tool-approval-btn',
+    'rail-readlater':  'tool-readlater-btn',
     'rail-memory':    'tool-memory-btn',
     'rail-theme':     'tool-theme-btn',
     'rail-email':     'email-section-title',

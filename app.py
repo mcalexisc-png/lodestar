@@ -733,6 +733,10 @@ from routes.workspace_routes import setup_workspace_routes
 app.include_router(setup_workspace_routes())
 from routes.prompt_routes import setup_prompt_routes
 app.include_router(setup_prompt_routes())
+from routes.approval_routes import setup_approval_routes
+app.include_router(setup_approval_routes())
+from routes.readlater_routes import setup_readlater_routes
+app.include_router(setup_readlater_routes())
 
 # Notes (Google Keep-style notes/todos)
 from routes.note_routes import setup_note_routes

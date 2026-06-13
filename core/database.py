@@ -2308,6 +2308,8 @@ def archive_session(session_id: str):
 # circular imports — core.database.Base must be defined first.
 from src.code_workspace import models as _code_workspace_models  # noqa: F811
 from src.prompt_library import models as _prompt_library_models  # noqa: F811
+from src.agent_approval import models as _agent_approval_models  # noqa: F811
+from src.read_later import models as _read_later_models  # noqa: F811
 
 # Initialize the database by creating all tables
 
