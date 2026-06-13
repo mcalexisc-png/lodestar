@@ -87,7 +87,15 @@ function _renderList() {
         <button class="readlater-action" data-action="delete" data-id="${i.id}">Delete</button>
       </div>
     </div>
-  `).join('') || '<div class="readlater-empty">No bookmarks</div>';
+  `).join('') || `
+    <div class="readlater-empty-state">
+      <div class="readlater-empty-title">No bookmarks yet</div>
+      <div class="readlater-empty-text">Save articles, docs, or pages you want to read later.</div>
+      <button class="readlater-btn readlater-empty-cta" id="readlater-empty-add-btn">+ Add your first bookmark</button>
+    </div>
+  `;
+
+  document.getElementById('readlater-empty-add-btn')?.addEventListener('click', _showAddForm);
 
   list.querySelectorAll('.readlater-action').forEach(btn => {
     btn.addEventListener('click', async () => {

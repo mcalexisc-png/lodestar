@@ -37244,6 +37244,9 @@ body.theme-frosted .modal {
 .approval-loading, .approval-error, .approval-empty {
   padding: 20px; text-align: center; opacity: .4; font-size: 13px;
 }
+.approval-empty-state { padding: 32px 16px; text-align: center; }
+.approval-empty-title { font-size: 14px; font-weight: 600; opacity: .8; margin-bottom: 6px; }
+.approval-empty-text { font-size: 12px; opacity: .5; }
 .approval-card {
   padding: 10px; margin-bottom: 6px;
   border: 1px solid var(--border); border-radius: 6px;
@@ -37299,6 +37302,10 @@ body.theme-frosted .modal {
 .readlater-btn-primary { background: var(--accent, var(--red)); color: var(--bg); }
 .readlater-list { flex: 1; overflow-y: auto; padding: 8px; }
 .readlater-loading, .readlater-error, .readlater-empty { padding: 20px; text-align: center; opacity: .4; font-size: 13px; }
+.readlater-empty-state { padding: 32px 16px; text-align: center; }
+.readlater-empty-title { font-size: 14px; font-weight: 600; opacity: .8; margin-bottom: 6px; }
+.readlater-empty-text { font-size: 12px; opacity: .5; margin-bottom: 14px; }
+.readlater-empty-cta { margin: 0 auto; }
 .readlater-card { padding: 10px; margin-bottom: 6px; border: 1px solid var(--border); border-radius: 6px; }
 .readlater-read { opacity: .5; }
 .readlater-card-header { margin-bottom: 2px; }

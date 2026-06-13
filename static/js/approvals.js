@@ -72,7 +72,12 @@ function _renderList() {
         <div class="approval-resolved">${a.resolved_at ? _esc(new Date(a.resolved_at).toLocaleString()) : ''}</div>
       `}
     </div>
-  `).join('') || '<div class="approval-empty">No approvals</div>';
+  `).join('') || `
+    <div class="approval-empty-state">
+      <div class="approval-empty-title">No approval requests yet</div>
+      <div class="approval-empty-text">When the agent wants to run a tool that needs your OK, it'll show up here for review.</div>
+    </div>
+  `;
 
   list.querySelectorAll('.approval-btn-approve').forEach(btn => {
     btn.addEventListener('click', () => _resolve(btn.dataset.id, 'approve'));
