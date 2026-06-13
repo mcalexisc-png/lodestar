@@ -85,6 +85,10 @@ function _renderUI() {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
               Run
             </button>
+            <button class="code-action-btn" id="code-run-args-btn" title="Run with args">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6"/><path d="M12 19h8"/></svg>
+              Args
+            </button>
             <button class="code-action-btn" id="code-save-btn" title="Save Ctrl+S">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
               Save
@@ -139,7 +143,8 @@ function _renderUI() {
   });
 
   document.getElementById('code-index-btn')?.addEventListener('click', _indexProject);
-  document.getElementById('code-run-btn')?.addEventListener('click', _runActiveFile);
+  document.getElementById('code-run-btn')?.addEventListener('click', () => _runActiveFile(false));
+  document.getElementById('code-run-args-btn')?.addEventListener('click', () => _runActiveFile(true));
   document.getElementById('code-save-btn')?.addEventListener('click', saveActiveFile);
 
   document.querySelectorAll('.code-ai-btn').forEach(btn => {
@@ -492,33 +497,68 @@ function _showOutput(title, text) {
   panel.style.display = '';
 }
 
-function _runActiveFile() {
-  const path = _activeFilePath;
-  if (!path) return _showOutput('Run', 'Open a file first');
+function _runActiveFile(withArgs) {
   if (!_editorView) return _showOutput('Run', 'No active editor');
+  const path = _activeFilePath;
+  const ext = path ? path.split('.').pop() || '' : '';
 
-  const content = _editorView.state.doc.toString();
-  const ext = path.split('.').pop() || '';
+  const selection = _editorView.state.selection.main;
+  const selectedText = selection.empty ? '' : _editorView.state.sliceDoc(selection.from, selection.to);
+
+  // Tier 1 — run selected text (inline eval)
+  if (selectedText) {
+    if (!path) return _showOutput('Run', 'Save the file first to determine language');
+    _showOutput('Run', 'Running selection...');
+    fetch(`${API}/eval`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({language: ext, code: selectedText, stdin_input: ''}),
+    })
+      .then(r => { if (!r.ok) return r.text().then(t => { throw new Error(t); }); return r.json(); })
+      .then(data => _formatRunOutput(data))
+      .catch(e => _showOutput('Run', e.message));
+    return;
+  }
+
+  // Tier 3 — run with args (opt-in)
+  if (withArgs) {
+    const argsStr = prompt('CLI arguments (space-separated):');
+    if (argsStr == null) return;
+    const args = argsStr.trim() ? argsStr.trim().split(/\s+/) : [];
+    if (!path) return _showOutput('Run', 'Save the file first');
+    _showOutput('Run', `Running (${args.join(' ')})...`);
+    fetch(`${API}/run`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({file_path: path, language: ext, args, stdin_input: ''}),
+    })
+      .then(r => { if (!r.ok) return r.text().then(t => { throw new Error(t); }); return r.json(); })
+      .then(data => _formatRunOutput(data))
+      .catch(e => _showOutput('Run', e.message));
+    return;
+  }
+
+  // Tier 2 — run file
+  if (!path) return _showOutput('Run', 'Open a file first');
 
   _showOutput('Run', 'Running...');
-
   fetch(`${API}/run`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({file_path: path, language: ext, stdin_input: ''}),
   })
-    .then(r => {
-      if (!r.ok) return r.text().then(t => { throw new Error(t); });
-      return r.json();
-    })
-    .then(data => {
-      let out = '';
-      if (data.stdout) out += data.stdout;
-      if (data.stderr) out += (out ? '\n' : '') + data.stderr;
-      if (!out) out = data.exit_code === 0 ? '(no output)' : `(exit ${data.exit_code})`;
-      _showOutput('Run', out);
-    })
+    .then(r => { if (!r.ok) return r.text().then(t => { throw new Error(t); }); return r.json(); })
+    .then(data => _formatRunOutput(data))
     .catch(e => _showOutput('Run', e.message));
+}
+
+function _formatRunOutput(data) {
+  let out = '';
+  if (data.stdout) out += data.stdout;
+  if (data.stderr) out += (out ? '\n' : '') + data.stderr;
+  if (!out) out = data.exit_code === 0 ? `(exit ${data.exit_code})` : `(exit ${data.exit_code})`;
+  if (data.duration_ms != null) out += `\n\n(${(data.duration_ms / 1000).toFixed(1)}s)`;
+  _showOutput('Run', out);
 }
 
 function _showNewSnippetDialog() {
@@ -688,7 +728,7 @@ document.addEventListener('keydown', e => {
   }
   if (mod && e.key === 'Enter') {
     e.preventDefault();
-    _runActiveFile();
+    _runActiveFile(false);
   }
 });
 

@@ -407,7 +407,52 @@ def setup_code_routes() -> APIRouter:
         except Exception as e:
             raise HTTPException(502, f"AI call failed: {e}")
 
-    # ── Code execution ──
+    # ── Code execution (three tiers) ──
+    #
+    # Tier 1 — eval: inline code, written to a temp file, never touches disk beyond tmp.
+    # Tier 2 — run: execute a file on disk (original path, sandboxed).
+    # Tier 3 — run with args: same as Tier 2 but passes CLI arguments.
+
+    @router.post("/eval")
+    async def eval_code(request: Request):
+        require_user(request)
+        if LODESTAR_LITE:
+            raise HTTPException(403, "execution_disabled_lite_mode")
+        body = await request.json()
+        language = (body or {}).get("language", "").strip().lower()
+        code = (body or {}).get("code", "")
+        stdin_input = (body or {}).get("stdin_input", "")
+        if not language or not code:
+            raise HTTPException(400, "language and code are required")
+
+        interpreter = _get_interpreter(language)
+        if not interpreter:
+            raise HTTPException(400, f"No interpreter configured for language: {language}")
+
+        import tempfile, time
+        suffix = f".{language}" if language in ("py", "js", "ts", "sh", "bash", "rs", "go") else ".txt"
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=suffix, delete=False, encoding="utf-8")
+        try:
+            tmp.write(code)
+            tmp.close()
+            start = time.monotonic()
+            try:
+                result = subprocess.run(
+                    [interpreter, tmp.name],
+                    cwd=os.path.dirname(tmp.name),
+                    capture_output=True, text=True, timeout=120,
+                    input=stdin_input or None,
+                )
+            except subprocess.TimeoutExpired:
+                os.unlink(tmp.name)
+                return {"exit_code": -1, "stdout": "", "stderr": "Timed out after 120s", "duration_ms": 120000}
+            duration = int((time.monotonic() - start) * 1000)
+            stdout = (result.stdout or "")[:50000]
+            stderr = (result.stderr or "")[:50000]
+            return {"exit_code": result.returncode, "stdout": stdout, "stderr": stderr, "duration_ms": duration}
+        finally:
+            try: os.unlink(tmp.name)
+            except: pass
 
     @router.post("/run")
     async def run_code(request: Request):
@@ -418,6 +463,7 @@ def setup_code_routes() -> APIRouter:
         file_path = (body or {}).get("file_path", "")
         language = (body or {}).get("language", "")
         stdin_input = (body or {}).get("stdin_input", "")
+        args = (body or {}).get("args", [])
         if not file_path or not language:
             raise HTTPException(400, "file_path and language are required")
         try:
@@ -433,9 +479,10 @@ def setup_code_routes() -> APIRouter:
 
         import time
         start = time.monotonic()
+        cmd = [interpreter, resolved] + (args if isinstance(args, list) else [str(args)])
         try:
             result = subprocess.run(
-                [interpreter, resolved],
+                cmd,
                 cwd=os.path.dirname(resolved),
                 capture_output=True,
                 text=True,
