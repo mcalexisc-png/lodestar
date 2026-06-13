@@ -54,7 +54,7 @@ Legacy: `ODYSSEUS_DATA_DIR`
 |---|---|---|
 | `AUTH_ENABLED` | `true` | Enable/disable login |
 | `LOCALHOST_BYPASS` | `false` | Dev-only auth bypass for loopback. Keep false for shared deployments. |
-| `SECURE_COOKIES` | `false` | Set true when served through HTTPS at a trusted proxy |
+| `SECURE_COOKIES` | `true` | Set false for localhost dev without HTTPS. True by default for security. |
 | `LODESTAR_ADMIN_USER` | `admin` | Pre-seed admin username during first setup |
 | `LODESTAR_ADMIN_PASSWORD` | (generated) | Pre-seed admin password during first setup |
 | `ALLOWED_ORIGINS` | `localhost` | CORS allowed origins |
