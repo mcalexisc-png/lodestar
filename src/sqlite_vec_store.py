@@ -18,6 +18,7 @@ never touch application schema / migrations / WAL. `memory.json` remains the
 system of record; this store is always a rebuildable index over it.
 """
 
+import functools
 import hashlib
 import logging
 import os
@@ -99,6 +100,11 @@ class SqliteVecMemoryStore:
             conn.enable_load_extension(True)
             sqlite_vec.load(conn)
             conn.enable_load_extension(False)
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("PRAGMA cache_size=-20000")
+            conn.execute("PRAGMA mmap_size=134217728")
+            conn.execute("PRAGMA busy_timeout=5000")
             self._conn = conn
 
             self._ensure_schema()
@@ -166,6 +172,7 @@ class SqliteVecMemoryStore:
     def healthy(self) -> bool:
         return self._healthy
 
+    @functools.lru_cache(maxsize=256)
     def _embed_one(self, text: str):
         vecs = self._provider.encode([text])
         if vecs is None or len(vecs) == 0:
@@ -292,6 +299,7 @@ class SqliteVecMemoryStore:
                         (mid, text),
                     )
             self._conn.commit()
+            self._embed_one.cache_clear()
             logger.info("SqliteVecMemoryStore rebuilt with %s entries", len(pairs))
         except Exception as e:
             logger.warning("sqlite-vec memory rebuild failed: %s", e)
