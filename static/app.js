@@ -39,6 +39,7 @@ let calendarModule = null;
 let notesModule = null;
 let adminModule = null;
 let cookbookModule = null;
+let codeModule = null;
 
 const API_BASE = window.location.origin;
 window.themeModule = themeModule;
@@ -919,6 +920,17 @@ function initializeEventListeners() {
     }
   })();
 
+  // Code tool button
+  const toolCodeBtn = el('tool-code-btn');
+  if (toolCodeBtn) {
+    toolCodeBtn.addEventListener('click', async () => {
+      if (!codeModule) codeModule = (await import('./js/code.js')).default;
+      if (codeModule) {
+        codeModule.isCodeOpen() ? codeModule.closeCodeView() : codeModule.openCodeView();
+      }
+    });
+  }
+
   // URL-based panel routing — bookmark /calendar, /notes, /cookbook etc
   // and the matching tool opens automatically on page load.
   const urlPath = window.location.pathname;
@@ -1041,6 +1053,19 @@ function initializeEventListeners() {
     '/memory':   () => document.getElementById('tool-memory-btn')?.click(),
     '/gallery':  () => document.getElementById('tool-gallery-btn')?.click(),
     '/tasks':    () => document.getElementById('tool-tasks-btn')?.click(),
+    '/code':     async () => {
+      if (!codeModule) codeModule = (await import('./js/code.js')).default;
+      if (codeModule) codeModule.openCodeView();
+    },
+    '/snippets': async () => {
+      if (!codeModule) codeModule = (await import('./js/code.js')).default;
+      if (codeModule) codeModule.openCodeView();
+      // open snippets tab after a short delay
+      setTimeout(() => {
+        const tab = document.querySelector('.code-tab[data-tab="snippets"]');
+        if (tab) tab.click();
+      }, 500);
+    },
     '/library':  () => sessionModule && sessionModule.openLibrary && sessionModule.openLibrary(),
   };
   const _opener = _routeOpen[urlPath];
@@ -2408,6 +2433,7 @@ function initializeEventListeners() {
     'tool-memory':         '#tool-memory-btn',
     'tool-notes':          '#tool-notes-btn',
     'tool-tasks':          '#tool-tasks-btn',
+    'tool-code':           '#tool-code-btn',
     'tool-theme':          '#tool-theme-btn',
     'user-bar':            '#user-bar-profile',
     'sidebar-settings-btn':'#user-bar-settings',
@@ -3420,6 +3446,7 @@ function startLodestarApp() {
     'rail-archive':   'tool-library-btn',
     'rail-gallery':   'tool-gallery-btn',
     'rail-tasks':     'tool-tasks-btn',
+    'rail-code':      'tool-code-btn',
     'rail-calendar':  'tool-calendar-btn',
     'rail-notes':     'tool-notes-btn',
     'rail-memory':    'tool-memory-btn',
